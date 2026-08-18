@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="AfricanIES Shipping vanilla JavaScript SDK example">
+    <title>AfricanIES Shipping SDK demo</title>
+    <script type="module" src="/src/main.js"></script>
+  </head>
+  <body>
+    <header class="hero">
+      <div class="container">
+        <p class="eyebrow">Vanilla JavaScript example</p>
+        <h1>AfricanIES Shipping</h1>
+        <p>Configure the SDK, build a shipment, select a rate, and purchase it.</p>
+      </div>
+    </header>
+
+    <main class="container layout">
+      <aside class="setup" aria-labelledby="setup-title">
+        <form id="setup-form">
+          <h2 id="setup-title">Runtime configuration</h2>
+          <p class="hint">Credentials stay in this page's memory only. They are never saved or logged.</p>
+
+          <label>
+            Environment
+            <select id="environment" name="environment">
+              <option value="test" selected>Test / sandbox</option>
+              <option value="live">Live / production</option>
+            </select>
+          </label>
+
+          <label>
+            Shipment mode
+            <select id="shipment-mode" name="shipmentMode">
+              <option value="SFN" selected>SFN</option>
+              <option value="STN">STN</option>
+            </select>
+          </label>
+
+          <label>
+            Base64 encoded key
+            <input id="encoded-key" name="encodedKey" type="password" autocomplete="off" spellcheck="false" required>
+          </label>
+
+          <label>
+            External reference
+            <input id="external-reference" name="externalReference" type="text" required>
+          </label>
+
+          <label>
+            Assigned date
+            <input id="assigned-date" name="assignedDate" type="date" required>
+          </label>
+
+          <div id="live-confirmation" class="live-confirmation" hidden>
+            <strong>Live API selected</strong>
+            <p>This can create real shipments and charges in your AfricanIES account.</p>
+            <label class="check-row">
+              <input id="confirm-live" type="checkbox">
+              I understand and want to use the LIVE API.
+            </label>
+          </div>
+
+          <button id="start-button" class="primary" type="submit">Start test shipment</button>
+          <button id="reset-button" class="secondary" type="button">Reset flow</button>
+          <p class="reset-warning">Reset and Back only change this local screen. They cannot revoke a purchase request after it has been sent.</p>
+        </form>
+      </aside>
+
+      <section class="flow" aria-labelledby="flow-title">
+        <div id="safety-banner" class="safety test" role="status">
+          <strong>TEST MODE</strong>
+          <span>Requests use api-sandbox.africaniestest.com.</span>
+        </div>
+        <div class="flow-heading">
+          <div>
+            <p class="eyebrow">Shipping flow</p>
+            <h2 id="flow-title">Ready to begin</h2>
+          </div>
+          <div id="back-actions" class="back-actions"></div>
+        </div>
+        <div id="app-status" class="status" role="status" aria-live="polite">Enter your runtime configuration to begin.</div>
+        <div id="app-error" class="error" role="alert" tabindex="-1" hidden></div>
+        <div id="workspace"></div>
+      </section>
+    </main>
+  </body>
+</html>

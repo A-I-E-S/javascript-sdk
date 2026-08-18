@@ -1,0 +1,83 @@
+:root {
+  color: #1c2b3f;
+  background: #f2f5f8;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+
+body { margin: 0; min-width: 320px; }
+
+button, input, select { font: inherit; }
+
+button, input, select { min-height: 44px; }
+
+button:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 3px solid rgb(28 189 93 / 35%);
+  outline-offset: 2px;
+}
+
+.container { margin: 0 auto; max-width: 1320px; padding-inline: clamp(16px, 4vw, 48px); }
+
+.hero { background: #1c2b3f; color: white; padding: 34px 0; }
+.hero h1 { font-size: clamp(2rem, 7vw, 3.6rem); margin: 0; }
+.hero p:last-child { color: #dbe1ea; margin-bottom: 0; }
+
+.eyebrow { color: #1cbd5d; font-size: .78rem; font-weight: 850; letter-spacing: .12em; margin: 0 0 6px; text-transform: uppercase; }
+
+.layout { display: grid; gap: 24px; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); padding-block: 28px 56px; }
+
+.setup, .flow { background: white; border: 1px solid #dbe1ea; border-radius: 16px; padding: clamp(16px, 3vw, 28px); }
+.setup { align-self: start; position: sticky; top: 16px; }
+.setup h2, .flow h2 { margin-top: 0; }
+.setup form, .setup label { display: grid; gap: 8px; }
+.setup form { gap: 16px; }
+.setup label { color: #526075; font-size: .88rem; font-weight: 700; }
+.setup input, .setup select { border: 1px solid #c9d1dd; border-radius: 9px; color: #1c2b3f; padding: 9px 11px; width: 100%; }
+.hint { color: #667185; font-size: .84rem; margin-top: -8px; }
+.reset-warning { color: #667185; font-size: .78rem; margin: -6px 0 0; }
+
+button { border: 0; border-radius: 999px; cursor: pointer; font-weight: 800; padding: 10px 16px; }
+button:disabled { cursor: not-allowed; opacity: .55; }
+.primary { background: #1cbd5d; color: #071b0f; }
+.secondary { background: white; border: 1px solid #c9d1dd; color: #1c2b3f; }
+.compact { min-height: 38px; padding: 7px 13px; }
+.danger-button { background: #9f1522; color: white; }
+
+.live-confirmation, .live-gate { background: #fff1f3; border: 2px solid #c00b19; border-radius: 12px; color: #78000e; padding: 14px; }
+.live-confirmation p { font-size: .86rem; }
+.check-row { align-items: start; display: grid !important; grid-template-columns: auto 1fr; }
+.check-row input { min-height: 20px; width: 20px; }
+
+.safety { align-items: center; border-radius: 10px; display: flex; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 20px; padding: 12px 14px; }
+.safety strong { letter-spacing: .05em; }
+.safety.test { background: #fff4df; border: 1px solid #f08829; color: #743a00; }
+.safety.live { background: #fff1f3; border: 2px solid #c00b19; color: #78000e; }
+
+.flow-heading { align-items: start; display: flex; gap: 16px; justify-content: space-between; }
+.status, .error { border-radius: 10px; margin-bottom: 16px; padding: 12px 14px; }
+.status { background: #eef7ff; border: 1px solid #c8e4ff; }
+.error { background: #fff1f3; border: 1px solid #ffc8cf; color: #78000e; }
+
+.live-gate h3 { margin-top: 0; }
+
+africanies-shipment-builder,
+africanies-rate-selection,
+africanies-purchase-confirmation {
+  --africanies-accent: #1cbd5d;
+  --africanies-primary: #1c2b3f;
+}
+
+@media (max-width: 860px) {
+  .layout { grid-template-columns: 1fr; }
+  .setup { position: static; }
+}
+
+@media (max-width: 560px) {
+  .container { padding-inline: 12px; }
+  .layout { padding-block: 12px 32px; }
+  .setup, .flow { border-radius: 12px; padding: 14px; }
+  .flow-heading { align-items: stretch; flex-direction: column; }
+  .back-actions button { width: 100%; }
+}

@@ -1,6 +1,15 @@
 export type AfricaniesEnvironment = 'test' | 'live';
 export type ShipmentMode = 'SFN' | 'STN';
 export type ResourceSelector = number | 'all';
+export type NumericString = `${number}`;
+
+export interface ShipmentCurrencyByMode {
+  SFN: 'NGN';
+  STN: 'USD';
+}
+
+export type ShipmentCurrency = ShipmentCurrencyByMode[ShipmentMode];
+export type ShipmentCurrencyForMode<TMode extends ShipmentMode> = ShipmentCurrencyByMode[TMode];
 
 export interface ApiEnvelope<T> {
   success: boolean;
@@ -83,8 +92,8 @@ export interface ShipmentRateAddress extends ShipmentAddressBase {
 
 export interface ShipmentPurchaseAddress extends ShipmentAddressBase {
   address_landmark: string | null;
-  longitude: number | null;
-  latitude: number | null;
+  longitude: number | NumericString | null;
+  latitude: number | NumericString | null;
   google_address: string | null;
 }
 
@@ -104,61 +113,97 @@ export type ShipmentRateAddresses = ShipmentAddressPair<ShipmentRateAddress>;
 export type ShipmentPurchaseAddresses = ShipmentAddressPair<ShipmentPurchaseAddress>;
 export type ShipmentRateDraftAddresses = ShipmentAddressPair<ShipmentRateDraftAddress>;
 
-export interface ShipmentUnits {
-  mass: string;
-  dimension: string;
+export interface ShipmentUnitsByMode {
+  SFN: {
+    mass: 'KG';
+    dimension: 'cm';
+  };
+  STN: {
+    mass: 'LBS';
+    dimension: 'inches';
+  };
 }
+
+export type ShipmentUnits = ShipmentUnitsByMode[ShipmentMode];
+export type ShipmentUnitsForMode<TMode extends ShipmentMode> = ShipmentUnitsByMode[TMode];
 
 export interface RateItem {
   name: string;
   description: string;
-  price: number;
+  price?: number;
   product_hs_code: string;
-  product_hs_code_description: string;
-  weight: string;
+  product_hs_code_description?: string;
+  weight: number;
   unit_price: number;
   country: string;
-  quantity: string;
-  amount: string;
+  quantity: number;
+  amount: number;
 }
 
 export interface RateBox {
-  index: string;
-  length: string;
-  width: string;
-  height: string;
-  weight: string;
+  index: number;
+  length: number;
+  width: number;
+  height: number;
+  weight: number;
   items: RateItem[];
+}
+
+export type NumericDraftValue = number | string;
+
+export interface RateItemDraft extends Omit<
+  RateItem,
+  'price' | 'weight' | 'unit_price' | 'quantity' | 'amount'
+> {
+  price?: NumericDraftValue;
+  weight: NumericDraftValue;
+  unit_price: NumericDraftValue;
+  quantity: NumericDraftValue;
+  amount: NumericDraftValue;
+}
+
+export interface RateBoxDraft extends Omit<
+  RateBox,
+  'index' | 'length' | 'width' | 'height' | 'weight' | 'items'
+> {
+  index: NumericDraftValue;
+  length: NumericDraftValue;
+  width: NumericDraftValue;
+  height: NumericDraftValue;
+  weight: NumericDraftValue;
+  items: RateItemDraft[];
 }
 
 export interface ShipmentRateRequest {
   addresses: ShipmentRateAddresses;
   boxes: RateBox[];
   units: ShipmentUnits;
-  last_mile_delivery?: boolean;
+  last_mile_delivery: boolean;
+  pickup: boolean;
   is_insured?: '0' | '1';
 }
 
-export interface ShipmentRateDraft extends Omit<ShipmentRateRequest, 'addresses'> {
+export interface ShipmentRateDraft extends Omit<ShipmentRateRequest, 'addresses' | 'boxes'> {
   addresses: ShipmentRateDraftAddresses;
+  boxes: RateBoxDraft[];
 }
 
 export interface RateCharges {
-  shipment_cost: number;
-  insurance_cost: number;
-  pickup_cost: string;
-  last_mile_delivery_cost: number;
-  vat?: string | null;
+  shipment_cost: number | NumericString;
+  insurance_cost: number | NumericString;
+  pickup_cost: number | NumericString;
+  last_mile_delivery_cost: number | NumericString;
+  vat?: number | NumericString | null;
 }
 
 export interface ShipmentRate {
   name: string;
   slug: string;
   charges: RateCharges;
-  total_amount: number;
-  discount_amount: number;
-  payment_amount: number;
-  total_item_value: number;
+  total_amount: number | NumericString;
+  discount_amount: number | NumericString;
+  payment_amount: number | NumericString;
+  total_item_value: number | NumericString;
   others: {
     min_day: string;
     max_day: string;
@@ -170,15 +215,15 @@ export interface ShipmentRate {
 export interface PurchaseItem {
   name: string;
   product_hs_code: string;
-  product_hs_code_description: string;
+  product_hs_code_description?: string;
   description: string;
   weight: number;
   unit_price: number;
   quantity: number;
   amount: number;
   country: string;
-  documents_s3_key: string[];
-  photos_s3_key: string[];
+  documents_s3_key?: string[];
+  photos_s3_key?: string[];
 }
 
 export interface PurchaseBox {
@@ -195,17 +240,18 @@ export interface ShipmentPurchaseRequest {
   assigned_date: string;
   boxes: PurchaseBox[];
   units: ShipmentUnits;
+  currency: ShipmentCurrency;
   external_reference: string;
   shipment_method_slug: string;
   type?: string;
   product_code?: 'P' | 'D';
   is_insured?: '0' | '1';
-  file_is_url?: '0' | '1';
+  file_is_url?: 0 | 1;
 }
 
 export interface PurchaseDocuments {
-  waybill_doc: string;
-  insurance_doc: string;
+  waybill_doc: string | null;
+  insurance_doc: string | null;
   invoice_doc: string;
 }
 

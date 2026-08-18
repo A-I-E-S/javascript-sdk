@@ -9,7 +9,7 @@ import type {
   ShipmentRateRequest,
   UploadFileDescriptor,
 } from '../types.js';
-import { validatePurchaseRequest, validateRateRequest, type ValidationIssue } from './validation.js';
+import { completeRateRequest, validatePurchaseRequest, validateRateRequest, type ValidationIssue } from './validation.js';
 
 export type Unsubscribe = () => void;
 
@@ -74,7 +74,7 @@ export class ShipmentBuilderController extends ObservableState<BuilderState> {
         data: this.state.issues,
       });
     }
-    return this.state.draft as ShipmentRateRequest;
+    return completeRateRequest(this.state.draft);
   }
 }
 
@@ -86,6 +86,33 @@ export interface RateSelectionState {
   rates: ShipmentRate[];
   selectedSlug: string | null;
   error: AfricaniesError | null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isFiniteNumeric(value: unknown): boolean {
+  if (typeof value !== 'number' && typeof value !== 'string') return false;
+  if (typeof value === 'string' && value.trim() === '') return false;
+  return Number.isFinite(Number(value));
+}
+
+function isShipmentRate(value: unknown): value is ShipmentRate {
+  if (!isRecord(value) || typeof value.name !== 'string' || typeof value.slug !== 'string') return false;
+  if (typeof value.mode !== 'string' || !isRecord(value.others) || !isRecord(value.charges)) return false;
+  if (typeof value.others.min_day !== 'string'
+    || typeof value.others.max_day !== 'string'
+    || typeof value.others.currency !== 'string') return false;
+  for (const field of ['total_amount', 'discount_amount', 'payment_amount', 'total_item_value'] as const) {
+    if (!isFiniteNumeric(value[field])) return false;
+  }
+  for (const field of ['shipment_cost', 'insurance_cost', 'pickup_cost', 'last_mile_delivery_cost'] as const) {
+    if (!isFiniteNumeric(value.charges[field])) return false;
+  }
+  return value.charges.vat === undefined
+    || value.charges.vat === null
+    || isFiniteNumeric(value.charges.vat);
 }
 
 export class RateSelectionController extends ObservableState<RateSelectionState> {
@@ -104,18 +131,12 @@ export class RateSelectionController extends ObservableState<RateSelectionState>
     const loadId = ++this.#loadId;
     this.#abortController = abortController;
     this.setState({ ...this.state, status: 'loading', rates: [], selectedSlug: null, error: null });
+    let response: ApiEnvelope<ShipmentRate[]>;
     try {
-      const response = await this.#client.shipments.getRates(
+      response = await this.#client.shipments.getRates(
         this.state.request,
         abortController.signal,
       );
-      if (loadId !== this.#loadId) return response.data;
-      this.setState({
-        ...this.state,
-        status: response.data.length === 0 ? 'empty' : 'ready',
-        rates: response.data,
-      });
-      return response.data;
     } catch (error) {
       const normalized =
         error instanceof AfricaniesError
@@ -126,6 +147,23 @@ export class RateSelectionController extends ObservableState<RateSelectionState>
       }
       throw normalized;
     }
+    if (!Array.isArray(response.data) || !response.data.every(isShipmentRate)) {
+      const invalidResponse = new AfricaniesError('AfricanIES returned invalid shipment rate data.', {
+        category: 'api',
+        data: response.data,
+      });
+      if (loadId === this.#loadId) {
+        this.setState({ ...this.state, status: 'error', error: invalidResponse, rates: [] });
+      }
+      throw invalidResponse;
+    }
+    if (loadId !== this.#loadId) return response.data;
+    this.setState({
+      ...this.state,
+      status: response.data.length === 0 ? 'empty' : 'ready',
+      rates: response.data,
+    });
+    return response.data;
   }
 
   select(slug: string): ShipmentRate {

@@ -16,6 +16,8 @@ const client = createAfricaniesClient({
 
 The SDK defaults to `test`. Live traffic requires `environment: 'live'`.
 
+The examples on this page describe the unreleased `0.2.0` source tree. If npm still resolves an earlier version, use that version's bundled documentation until `0.2.0` is separately approved and published.
+
 | Environment | API origin |
 |---|---|
 | `test` | `https://api-sandbox.africaniestest.com` |
@@ -72,6 +74,29 @@ console.log(uploaded.s3_key);
 ```
 
 The SDK first generates a signed URL, then sends the raw file with presigned HTTP `PUT`. It uses the descriptor MIME type and does not forward AfricanIES authorization headers to S3.
+
+## Rate to purchase
+
+Pass the selected rate object to the conversion boundary so the SDK can preserve its slug and validate its mode/currency:
+
+```ts
+const prepared = preparePurchaseRequest(rateRequest, {
+  assignedDate: '2099-08-20', // Replace with a real YYYY-MM-DD date after today.
+  externalReference: 'ORDER-1001',
+  rate: selectedRate,
+  fileIsUrl: 0,
+});
+
+if (!prepared.success) {
+  console.error(prepared.issues);
+} else {
+  await client.shipments.purchase(prepared.request);
+}
+```
+
+`preparePurchaseRequest` returns `{ success: false, issues }` when `assignedDate` is not a real `YYYY-MM-DD` calendar date strictly after today. `fileIsUrl` is optional, but when supplied it must be the number `0` or `1`; string flags also return validation issues. Its optional `referenceDate` option is a deterministic test hook—omit it in production so validation uses the current date. `fileIsUrl: 0` requests Base64 document response data. The purchase element reports that the data is available for programmatic consumption without placing it in rendered HTML; do not log that data. SFN purchases use `NGN`; STN purchases use `USD`; the adapter validates the selected rate and emits the appropriate currency.
+
+Purchase longitude and latitude keys are required but may contain a finite number, a decimal/scientific numeric string, or `null`. Longitude must remain within `-180...180` and latitude within `-90...90`; empty strings, hexadecimal strings, non-numeric text, `NaN`, and infinities fail validation.
 
 ## Errors
 

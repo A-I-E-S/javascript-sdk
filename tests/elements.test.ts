@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { AfricaniesClient } from '../src/client.js';
+import type { ShipmentRateDraft } from '../src/types.js';
 import { AfricaniesError } from '../src/errors.js';
 import { purchaseRequest, rateRequest } from './fixtures.js';
 
@@ -44,7 +45,14 @@ describe('AfricanIES custom elements', () => {
 
   it('emits a complete rate request from Stage 1', () => {
     const element = document.createElement('africanies-shipment-builder');
-    element.value = rateRequest();
+    const draft: ShipmentRateDraft = structuredClone(rateRequest());
+    draft.boxes[0]!.index = '0';
+    draft.boxes[0]!.length = '10';
+    draft.boxes[0]!.items[0]!.weight = '1.4';
+    draft.boxes[0]!.items[0]!.quantity = '1';
+    delete draft.boxes[0]!.items[0]!.price;
+    delete draft.boxes[0]!.items[0]!.product_hs_code_description;
+    element.value = draft;
     let detail: unknown;
     element.addEventListener('africanies-complete', (event) => {
       detail = (event as CustomEvent).detail;
@@ -54,15 +62,20 @@ describe('AfricanIES custom elements', () => {
       new Event('submit', { bubbles: true, cancelable: true }),
     );
     expect(detail).toMatchObject({ units: { mass: 'KG', dimension: 'cm' } });
+    expect(detail).toMatchObject({ pickup: false, last_mile_delivery: true });
+    expect((detail as ReturnType<typeof rateRequest>).boxes[0]).toMatchObject({ index: 0, length: 10 });
+    expect((detail as ReturnType<typeof rateRequest>).boxes[0]!.items[0]).toMatchObject({ weight: 1.4, quantity: 1 });
+    expect((detail as ReturnType<typeof rateRequest>).boxes[0]!.items[0]).not.toHaveProperty('price');
   });
 
   it('updates locked units when a connected builder receives an STN client', () => {
     const element = document.createElement('africanies-shipment-builder');
     document.body.append(element);
     element.client = fakeClient({ shipmentMode: 'STN' });
-    expect(element.value.units).toEqual({ dimension: 'INCHES', mass: 'lbs' });
+    expect(element.value.units).toEqual({ dimension: 'inches', mass: 'LBS' });
+    expect(element.value).toMatchObject({ last_mile_delivery: false, pickup: true });
     expect([...element.shadowRoot!.querySelectorAll<HTMLInputElement>('input[readonly]')].map((input) => input.value))
-      .toEqual(['INCHES', 'lbs']);
+      .toEqual(['inches', 'LBS', 'Disabled', 'Enabled']);
   });
 
   it('normalizes host-supplied locked mode and address-role fields', () => {
@@ -73,7 +86,7 @@ describe('AfricanIES custom elements', () => {
     value.addresses.sender.type = '';
     value.addresses.receiver.type = '';
     element.value = value;
-    expect(element.value.units).toEqual({ dimension: 'INCHES', mass: 'lbs' });
+    expect(element.value.units).toEqual({ dimension: 'inches', mass: 'LBS' });
     expect(element.value.addresses.sender.type).toBe('sender');
     expect(element.value.addresses.receiver.type).toBe('receiver');
   });
@@ -97,14 +110,14 @@ describe('AfricanIES custom elements', () => {
     const value = rateRequest();
     value.boxes = [
       structuredClone(value.boxes[0]!),
-      { ...structuredClone(value.boxes[0]!), index: '1' },
-      { ...structuredClone(value.boxes[0]!), index: '2' },
+      { ...structuredClone(value.boxes[0]!), index: 1 },
+      { ...structuredClone(value.boxes[0]!), index: 2 },
     ];
     element.value = value;
     document.body.append(element);
     element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="remove-box"][data-box="1"]')!.click();
     element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="add-box"]')!.click();
-    expect(element.value.boxes.map((box) => box.index)).toEqual(['0', '2', '3']);
+    expect(element.value.boxes.map((box) => box.index)).toEqual([0, 2, '3']);
   });
 
   it('renders purchase validation issues instead of silently rejecting', async () => {
@@ -142,7 +155,7 @@ describe('AfricanIES custom elements', () => {
   it('restores purchase rendering after detach and reattach', async () => {
     const response = { success: true, status_code: 200, message: 'ok', data: {
       reference: 'EX-1', tracking_number: 'TRK-1', tracking_url: 'https://example.test',
-      documents: { waybill_doc: '', insurance_doc: '', invoice_doc: '' },
+      documents: { waybill_doc: null, insurance_doc: null, invoice_doc: 'https://example.test/invoice' },
       waybill_is_url: 1, insurance_is_url: 1, invoice_is_url: 1, mode: 'sfn',
     } };
     const purchase = vi.fn().mockResolvedValue(response);
@@ -155,6 +168,34 @@ describe('AfricanIES custom elements', () => {
     element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="purchase"]')!.click();
     await nextTask();
     expect(element.shadowRoot!.textContent).toContain('Shipment confirmed');
+    expect(element.shadowRoot!.textContent).toContain('Waybill documentUnavailable');
+    expect(element.shadowRoot!.textContent).toContain('Insurance documentUnavailable');
+    expect(element.shadowRoot!.querySelector('a[href="https://example.test/invoice"]')).not.toBeNull();
+  });
+
+  it('labels Base64 documents without embedding or logging their contents', async () => {
+    const secretBase64 = 'JVBERi0xLjQtc2Vuc2l0aXZlLWRvY3VtZW50';
+    const response = { success: true, status_code: 200, message: 'ok', data: {
+      reference: 'EX-BASE64', tracking_number: 'TRK-BASE64', tracking_url: 'https://example.test',
+      documents: {
+        waybill_doc: null,
+        insurance_doc: secretBase64,
+        invoice_doc: secretBase64,
+      },
+      waybill_is_url: 0, insurance_is_url: 0, invoice_is_url: 0, mode: 'sfn',
+    } };
+    const purchase = vi.fn().mockResolvedValue(response);
+    const element = document.createElement('africanies-purchase-confirmation');
+    element.client = fakeClient({ shipments: { purchase } });
+    element.request = purchaseRequest();
+    document.body.append(element);
+    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="purchase"]')!.click();
+    await nextTask();
+    const text = element.shadowRoot!.textContent ?? '';
+    expect(text).toContain('Waybill documentUnavailable');
+    expect(text.match(/Base64 document returned; consume programmatically/g)).toHaveLength(2);
+    expect(text).not.toContain(secretBase64);
+    expect(element.shadowRoot!.innerHTML).not.toContain(secretBase64);
   });
 
   it('reloads rates and restores rendering after detach and reattach', async () => {
@@ -162,7 +203,7 @@ describe('AfricanIES custom elements', () => {
       name: 'AfricanIES Air', slug: 'air-sfn',
       charges: { shipment_cost: 10, insurance_cost: 0, pickup_cost: '0', last_mile_delivery_cost: 0 },
       total_amount: 10, discount_amount: 0, payment_amount: 10, total_item_value: 100,
-      others: { min_day: '2', max_day: '4', currency: 'USD' }, mode: 'sfn',
+      others: { min_day: '2', max_day: '4', currency: 'NGN' }, mode: 'sfn',
     }] };
     const getRates = vi.fn().mockResolvedValue(response);
     const element = document.createElement('africanies-rate-selection');
@@ -188,5 +229,37 @@ describe('AfricanIES custom elements', () => {
     expect(getRates).toHaveBeenCalledTimes(1);
     await element.load();
     expect(getRates).toHaveBeenCalledTimes(2);
+  });
+
+  it('renders numeric-string rate amounts without throwing', async () => {
+    const response = { success: true, status_code: 200, message: 'ok', data: [{
+      name: 'AfricanIES Air', slug: 'air-sfn',
+      charges: { shipment_cost: 10, insurance_cost: 0, pickup_cost: '0', last_mile_delivery_cost: 0 },
+      total_amount: 10, discount_amount: 0, payment_amount: '128766.1429', total_item_value: 100,
+      others: { min_day: '2', max_day: '4', currency: 'NGN' }, mode: 'sfn',
+    }] };
+    const getRates = vi.fn().mockResolvedValue(response);
+    const element = document.createElement('africanies-rate-selection');
+    element.client = fakeClient({ shipments: { getRates } });
+    element.request = rateRequest();
+    document.body.append(element);
+    await nextTask();
+    expect(element.shadowRoot!.textContent).toContain('NGN 128766.14');
+    expect(element.shadowRoot!.textContent).not.toContain('Unable to load shipment rates');
+  });
+
+  it('emits invalid rate payload errors with API diagnostics', async () => {
+    const getRates = vi.fn().mockResolvedValue({
+      success: true, status_code: 200, message: 'ok', data: { rates: [] },
+    });
+    const element = document.createElement('africanies-rate-selection');
+    element.client = fakeClient({ shipments: { getRates } });
+    element.request = rateRequest();
+    let emitted: unknown;
+    element.addEventListener('africanies-error', (event) => { emitted = (event as CustomEvent).detail; });
+    document.body.append(element);
+    await nextTask();
+    expect(element.shadowRoot!.textContent).toContain('invalid shipment rate data');
+    expect(emitted).toMatchObject({ category: 'api' });
   });
 });

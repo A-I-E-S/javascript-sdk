@@ -6,3 +6,4 @@ test-results/
 *.tgz
 .DS_Store
 *.log
+examples/vanilla/node_modules

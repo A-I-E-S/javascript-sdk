@@ -52,7 +52,8 @@ The builder can start empty or with consumer-supplied data. It emits `africanies
 ```ts
 const rates = document.querySelector('africanies-rate-selection');
 rates.client = client;
-rates.request = completeRateRequest;
+const completedRateRequest = completeRateRequest(rateDraft);
+rates.request = completedRateRequest;
 
 rates.addEventListener('africanies-complete', (event) => {
   const { rate, request } = event.detail;
@@ -71,6 +72,12 @@ purchase.request = completePurchaseRequest;
 ```
 
 Stage 3 applies an in-flight lock, never automatically retries purchase, and reuses its successful response for repeated UI submissions. The API defines duplicates using `external_reference` after the associated shipment is confirmed paid.
+
+In `0.2.0`, Stage 1 completes numeric box/item fields through `completeRateRequest`. Stage 2 passes the complete selected rate to the consumer. Pass that rate to `preparePurchaseRequest`; its `slug` becomes `shipment_method_slug`, and its mode/currency is checked before Stage 3.
+
+`preparePurchaseRequest` rejects an `assigned_date` that is not a real `YYYY-MM-DD` calendar date strictly after today and returns field-addressable issues before Stage 3 is mounted. Stage 3 repeats that validation immediately before submission. When present, `file_is_url` must be the number `0` or `1`; string flags such as `'0'` and `'1'` are invalid. The adapter's optional `referenceDate` is for deterministic tests and should be omitted in production.
+
+Waybill and insurance documents can be unavailable (`null`). The invoice document is required. Stage 3 labels unavailable documents instead of producing invalid links. When a document's corresponding `*_is_url` flag is `0`, Stage 3 reports that Base64 data was returned for programmatic consumption without rendering, linking, or logging the Base64 content.
 
 ## Test mode
 

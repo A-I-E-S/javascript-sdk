@@ -2,7 +2,7 @@
 
 Official TypeScript/JavaScript client and framework-neutral UI for AfricanIES shipping integrations.
 
-> **Implementation status:** pre-release `0.1.0`. The public API may change before the first approved release.
+> **Implementation status:** `0.2.0` contract correction prepared locally and **not published**. The public npm `latest` tag remains on the previously published release until a separate release approval.
 
 ## Installation
 
@@ -45,6 +45,8 @@ Base64 is reversible encoding, not encryption. Never embed a credential in a pub
 - `@africanies/shipping/browser` — client, controllers, and auto-registering elements for browser ESM
 
 Detailed guides are under [`docs/`](./docs/).
+
+Version `0.2.0` corrects shipment wire types based on observed rate and purchase payloads. It contains breaking TypeScript and rate-to-purchase adapter changes; see [the migration guide](./docs/migrating-to-0.2.md) and [changelog](./CHANGELOG.md).
 
 ## Development
 

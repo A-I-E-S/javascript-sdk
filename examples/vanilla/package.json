@@ -1,0 +1,21 @@
+{
+  "name": "africanies-shipping-vanilla-example",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "node --test test/*.node.js",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@africanies/shipping": "0.1.0"
+  },
+  "devDependencies": {
+    "vite": "^8.2.1"
+  }
+}

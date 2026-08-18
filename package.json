@@ -1,6 +1,6 @@
 {
   "name": "@africanies/shipping",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Official AfricanIES Shipping JavaScript and TypeScript SDK",
   "type": "module",
   "license": "MIT",
@@ -12,12 +12,17 @@
   "files": [
     "dist",
     "docs",
+    "CHANGELOG.md",
     "README.md",
     "SECURITY.md"
   ],
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/types/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/A-I-E-S/javascript-sdk.git"
+  },
   "exports": {
     ".": {
       "types": "./dist/types/index.d.ts",

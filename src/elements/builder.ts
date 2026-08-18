@@ -1,6 +1,6 @@
 import type { AfricaniesClient } from '../client.js';
-import type { RateBox, RateItem, ShipmentRateDraft, ShipmentRateDraftAddress, ShipmentRateRequest, ShipmentUnits } from '../types.js';
-import { validateRateRequest, type ValidationIssue } from '../ui/validation.js';
+import type { RateBoxDraft, RateItemDraft, ShipmentRateDraft, ShipmentRateDraftAddress, ShipmentUnits } from '../types.js';
+import { completeRateRequest, validateRateRequest, type ValidationIssue } from '../ui/validation.js';
 import { AfricaniesElement, escapeHtml, sharedStyles, testModeMarkup } from './base.js';
 
 const addressFields: Array<[keyof ShipmentRateDraftAddress, string, string]> = [
@@ -29,14 +29,14 @@ function emptyAddress(type: 'sender' | 'receiver'): ShipmentRateDraftAddress {
   };
 }
 
-function emptyItem(): RateItem {
+function emptyItem(): RateItemDraft {
   return {
-    name: '', description: '', price: 0, product_hs_code: '',
-    product_hs_code_description: '', weight: '', unit_price: 0, country: '', quantity: '1', amount: '0',
+    name: '', description: '', product_hs_code: '',
+    weight: '', unit_price: 0, country: '', quantity: '1', amount: '0',
   };
 }
 
-function emptyBox(index: number): RateBox {
+function emptyBox(index: number): RateBoxDraft {
   return { index: String(index), length: '', width: '', height: '', weight: '', items: [emptyItem()] };
 }
 
@@ -44,14 +44,21 @@ function defaultValue(mode: 'SFN' | 'STN'): ShipmentRateDraft {
   return {
     addresses: { sender: emptyAddress('sender'), receiver: emptyAddress('receiver') },
     boxes: [emptyBox(0)],
-    units: mode === 'SFN' ? { dimension: 'cm', mass: 'KG' } : { dimension: 'INCHES', mass: 'lbs' },
-    last_mile_delivery: true,
+    units: unitsForMode(mode),
+    last_mile_delivery: mode === 'SFN',
+    pickup: mode === 'STN',
     is_insured: '0',
   };
 }
 
 function unitsForMode(mode: 'SFN' | 'STN'): ShipmentUnits {
-  return mode === 'SFN' ? { dimension: 'cm', mass: 'KG' } : { dimension: 'INCHES', mass: 'lbs' };
+  return mode === 'SFN' ? { dimension: 'cm', mass: 'KG' } : { dimension: 'inches', mass: 'LBS' };
+}
+
+function applyModeRules(value: ShipmentRateDraft, mode: 'SFN' | 'STN'): void {
+  value.units = unitsForMode(mode);
+  value.last_mile_delivery = mode === 'SFN';
+  value.pickup = mode === 'STN';
 }
 
 function clone<T>(value: T): T {
@@ -71,7 +78,7 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
 
   override attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null): void {
     if (name === 'shipment-mode' && oldValue !== newValue && this.#value) {
-      this.#value.units = unitsForMode(newValue === 'STN' ? 'STN' : 'SFN');
+      applyModeRules(this.#value, newValue === 'STN' ? 'STN' : 'SFN');
     }
     super.attributeChangedCallback(name, oldValue, newValue);
   }
@@ -79,7 +86,7 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
   get value(): ShipmentRateDraft { return clone(this.#value ?? defaultValue(this.shipmentMode)); }
   set value(value: ShipmentRateDraft) {
     this.#value = clone(value);
-    this.#value.units = unitsForMode(this.shipmentMode);
+    applyModeRules(this.#value, this.shipmentMode);
     this.#value.addresses.sender.type = 'sender';
     this.#value.addresses.receiver.type = 'receiver';
     if (this.isConnected) this.render();
@@ -106,7 +113,8 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
           <section class="card"><h3>Delivery preferences</h3><div class="grid">
             <label>Dimension unit<input value="${escapeHtml(value.units.dimension)}" readonly></label>
             <label>Mass unit<input value="${escapeHtml(value.units.mass)}" readonly></label>
-            <label>Delivery<select data-field="last_mile_delivery"><option value="true" ${value.last_mile_delivery ? 'selected' : ''}>Doorstep delivery</option><option value="false" ${!value.last_mile_delivery ? 'selected' : ''}>Warehouse pickup</option></select></label>
+            <label>Last-mile delivery<input value="${value.last_mile_delivery ? 'Enabled' : 'Disabled'}" readonly></label>
+            <label>Pickup<input value="${value.pickup ? 'Enabled' : 'Disabled'}" readonly></label>
             <label>Insurance<select data-field="is_insured"><option value="0" ${value.is_insured !== '1' ? 'selected' : ''}>No insurance</option><option value="1" ${value.is_insured === '1' ? 'selected' : ''}>Add insurance</option></select></label>
           </div></section>
         </div>
@@ -122,18 +130,18 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
     }).join('')}<label>Google-derived address<select data-path="addresses.${role}.google_address" data-address="${role}" data-field="google_address" ${this.issueAttributes(`addresses.${role}.google_address`)}><option value="0" ${address.google_address === '0' ? 'selected' : ''}>No</option><option value="1" ${address.google_address === '1' ? 'selected' : ''}>Yes</option></select>${this.issueMarkup(`addresses.${role}.google_address`)}</label></div></section>`;
   }
 
-  private renderBox(box: RateBox, boxIndex: number): string {
+  private renderBox(box: RateBoxDraft, boxIndex: number): string {
     return `<article class="card box"><div class="section-title"><h3>Box ${boxIndex + 1}</h3><button class="danger" type="button" data-action="remove-box" data-box="${boxIndex}" ${this.#value!.boxes.length === 1 ? 'disabled' : ''}>Remove</button></div>
       <div class="grid">${(['length', 'width', 'height', 'weight'] as const).map((key) => { const path = `boxes.${boxIndex}.${key}`; return `<label>${key[0]!.toUpperCase()}${key.slice(1)}<input inputmode="decimal" data-path="${path}" data-box="${boxIndex}" data-box-field="${key}" value="${escapeHtml(box[key])}" ${this.issueAttributes(path)}>${this.issueMarkup(path)}</label>`; }).join('')}</div>
       <div class="section-title" style="margin-top:16px"><h3>Items</h3><button class="secondary" type="button" data-action="add-item" data-box="${boxIndex}">Add item</button></div>
       <div class="stack">${box.items.map((item, itemIndex) => this.renderItem(item, boxIndex, itemIndex)).join('')}</div></article>`;
   }
 
-  private renderItem(item: RateItem, boxIndex: number, itemIndex: number): string {
-    const fields: Array<[keyof RateItem, string, string]> = [
+  private renderItem(item: RateItemDraft, boxIndex: number, itemIndex: number): string {
+    const fields: Array<[keyof RateItemDraft, string, string]> = [
       ['name', 'Item name', 'text'], ['description', 'Description', 'text'], ['product_hs_code', 'HS code', 'text'],
-      ['product_hs_code_description', 'HS description', 'text'], ['country', 'Country of origin', 'text'],
-      ['weight', 'Weight', 'text'], ['quantity', 'Quantity', 'text'], ['price', 'Price', 'number'],
+      ['product_hs_code_description', 'HS description (optional)', 'text'], ['country', 'Country of origin', 'text'],
+      ['weight', 'Weight', 'text'], ['quantity', 'Quantity', 'text'], ['price', 'Price (optional)', 'number'],
       ['unit_price', 'Unit price', 'number'], ['amount', 'Amount', 'text'],
     ];
     return `<div class="item"><div class="section-title"><strong>Item ${itemIndex + 1}</strong><button class="danger" type="button" data-action="remove-item" data-box="${boxIndex}" data-item="${itemIndex}" ${this.#value!.boxes[boxIndex]!.items.length === 1 ? 'disabled' : ''}>Remove</button></div><div class="grid">${fields.map(([key, label, type]) => { const path = `boxes.${boxIndex}.items.${itemIndex}.${String(key)}`; return `<label>${label}<input type="${type}" data-path="${path}" data-box="${boxIndex}" data-item="${itemIndex}" data-item-field="${String(key)}" value="${escapeHtml(item[key])}" ${this.issueAttributes(path)}>${this.issueMarkup(path)}</label>`; }).join('')}</div></div>`;
@@ -159,7 +167,7 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
         }
         return;
       }
-      this.emit('africanies-complete', clone(this.#value!) as ShipmentRateRequest);
+      this.emit('africanies-complete', completeRateRequest(this.#value!));
     });
   }
 
@@ -173,7 +181,6 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
         ? (input.value === '' ? null : Number(input.value))
         : input.value;
     }
-    if (!role && field === 'last_mile_delivery') this.#value!.last_mile_delivery = input.value === 'true';
     if (!role && field === 'is_insured') this.#value!.is_insured = input.value as '0' | '1';
     const boxIndex = Number(input.dataset.box);
     if (Number.isInteger(boxIndex) && input.dataset.boxField) {
@@ -182,7 +189,12 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
     const itemIndex = Number(input.dataset.item);
     if (Number.isInteger(boxIndex) && Number.isInteger(itemIndex) && input.dataset.itemField) {
       const key = input.dataset.itemField;
-      (this.#value!.boxes[boxIndex]!.items[itemIndex] as unknown as Record<string, unknown>)[key] = input.type === 'number' ? Number(input.value) : input.value;
+      const item = this.#value!.boxes[boxIndex]!.items[itemIndex] as unknown as Record<string, unknown>;
+      if ((key === 'price' || key === 'product_hs_code_description') && input.value.trim() === '') {
+        delete item[key];
+      } else {
+        item[key] = input.type === 'number' ? Number(input.value) : input.value;
+      }
     }
     this.emit('africanies-change', clone(this.#value!));
   }

@@ -15,6 +15,7 @@ export type {
   UploadStatus,
 } from './ui/controllers.js';
 export {
+  completeRateRequest,
   preparePurchaseRequest,
   validatePurchaseRequest,
   validateRateRequest,

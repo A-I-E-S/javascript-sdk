@@ -1,0 +1,76 @@
+{
+  "name": "@africanies/shipping",
+  "version": "0.1.0",
+  "description": "Official AfricanIES Shipping JavaScript and TypeScript SDK",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": [
+    "./dist/browser.js",
+    "./dist/elements.js",
+    "./dist/africanies-shipping.global.js"
+  ],
+  "files": [
+    "dist",
+    "docs",
+    "README.md",
+    "SECURITY.md"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/types/server.d.ts",
+      "import": "./dist/server.js"
+    },
+    "./ui": {
+      "types": "./dist/types/ui.d.ts",
+      "import": "./dist/ui.js"
+    },
+    "./elements": {
+      "types": "./dist/types/elements.d.ts",
+      "import": "./dist/elements.js"
+    },
+    "./browser": {
+      "types": "./dist/types/browser.d.ts",
+      "import": "./dist/browser.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "clean": "node ./scripts/clean.mjs",
+    "check": "tsc --noEmit",
+    "build": "npm run clean && vite build && vite build --config vite.config.cdn.ts && tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:browser": "npm run build && playwright test",
+    "test:browser:built": "playwright test",
+    "pack:check": "npm pack --dry-run",
+    "preview": "vite preview",
+    "verify": "npm run check && npm test && npm run build && npm run pack:check"
+  },
+  "keywords": [
+    "africanies",
+    "shipping",
+    "logistics",
+    "sdk",
+    "custom-elements"
+  ],
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^26.2.0",
+    "@vitest/coverage-v8": "^4.1.11",
+    "jsdom": "^30.0.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.1",
+    "vitest": "^4.1.11"
+  }
+}

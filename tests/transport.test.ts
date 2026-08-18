@@ -1,0 +1,102 @@
+import { describe, expect, it, vi } from 'vitest';
+import { AfricaniesError, createFetchTransport } from '../src/index.js';
+
+describe('fetch transport', () => {
+  it('sends only the approved API headers', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(JSON.stringify({ success: true, status_code: 200, message: 'ok', data: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    const transport = createFetchTransport({
+      baseUrl: 'https://example.test/api/v1',
+      authorization: 'secret',
+      shipmentMode: 'SFN',
+      fetch: fetchMock as typeof fetch,
+    });
+
+    await transport.request({ method: 'POST', path: '/shipment/rates', body: { boxes: [] } });
+
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('https://example.test/api/v1/shipment/rates');
+    const headers = new Headers(init?.headers);
+    expect(headers.get('Authorization')).toBe('secret');
+    expect(headers.get('X-Shipment-Mode')).toBe('SFN');
+    expect(headers.get('Content-Type')).toBe('application/json');
+    expect(headers.has('X-Account-Number')).toBe(false);
+  });
+
+  it('turns API failures into typed errors without exposing authorization', async () => {
+    const transport = createFetchTransport({
+      baseUrl: 'https://example.test/api/v1', authorization: 'do-not-leak', shipmentMode: 'STN',
+      fetch: (async () => new Response(JSON.stringify({
+        success: false, status_code: 422, message: 'Validation failed', data: { boxes: ['required'] },
+      }), { status: 422 })) as typeof fetch,
+    });
+    await expect(transport.request({ method: 'POST', path: '/shipment/rates' })).rejects.toMatchObject({
+      name: 'AfricaniesError', category: 'validation', status: 422, apiStatusCode: 422,
+    });
+  });
+
+  it('rejects malformed envelopes', async () => {
+    const transport = createFetchTransport({
+      baseUrl: 'https://example.test/api/v1', authorization: 'secret', shipmentMode: 'SFN',
+      fetch: (async () => new Response(JSON.stringify({ data: [] }), { status: 200 })) as typeof fetch,
+    });
+    await expect(transport.request({ method: 'GET', path: '/warehouse' })).rejects.toBeInstanceOf(
+      AfricaniesError,
+    );
+  });
+
+  it('reports timeout separately from a caller abort', async () => {
+    const fetchUntilAbort = ((_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+      })) as typeof fetch;
+    const transport = createFetchTransport({
+      baseUrl: 'https://example.test/api/v1',
+      authorization: 'secret',
+      shipmentMode: 'SFN',
+      fetch: fetchUntilAbort,
+      timeoutMs: 5,
+    });
+
+    await expect(transport.request({ method: 'GET', path: '/warehouse' })).rejects.toMatchObject({
+      category: 'timeout',
+    });
+  });
+
+  it('keeps timeout and caller cancellation active while reading the response body', async () => {
+    const fetchWithSlowBody = (async (_input: RequestInfo | URL, init?: RequestInit) => ({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: () => new Promise((_resolve, reject) => {
+        if (init?.signal?.aborted) {
+          reject(init.signal.reason);
+          return;
+        }
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+      }),
+    }) as Response) as typeof fetch;
+    const timedTransport = createFetchTransport({
+      baseUrl: 'https://example.test/api/v1', authorization: 'secret', shipmentMode: 'SFN',
+      fetch: fetchWithSlowBody, timeoutMs: 5,
+    });
+    await expect(timedTransport.request({ method: 'GET', path: '/warehouse' })).rejects.toMatchObject({
+      category: 'timeout',
+    });
+
+    const controller = new AbortController();
+    const abortableTransport = createFetchTransport({
+      baseUrl: 'https://example.test/api/v1', authorization: 'secret', shipmentMode: 'SFN',
+      fetch: fetchWithSlowBody, timeoutMs: 5_000,
+    });
+    const request = abortableTransport.request({
+      method: 'GET', path: '/warehouse', signal: controller.signal,
+    });
+    controller.abort(new Error('consumer cancellation'));
+    await expect(request).rejects.toMatchObject({ category: 'aborted' });
+  });
+});

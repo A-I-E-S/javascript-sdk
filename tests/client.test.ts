@@ -96,4 +96,23 @@ describe('Africanies client resources', () => {
     expect(headers.has('X-Shipment-Mode')).toBe(false);
     expect(result.s3_key).toBe('documents/invoice/file.pdf');
   });
+
+  it('rejects an insecure remote upload URL before sending file bytes', async () => {
+    const transport: AfricaniesTransport = {
+      async request<T>() {
+        return { success: true, status_code: 200, message: 'ok', data: [{
+          file_name: 'file-id', upload_url: 'http://bucket.example.test/key?signature=must-not-leak',
+          s3_key: 'documents/invoice/file.pdf',
+        }] as T };
+      },
+    };
+    const uploadFetch = vi.fn();
+    const client = createAfricaniesClient({ shipmentMode: 'SFN', transport });
+    await expect(client.files.upload(new Blob(['sensitive']), {
+      extension: 'pdf', mime_type: 'application/pdf', folder: 'documents/invoice',
+    }, { fetch: uploadFetch as typeof fetch })).rejects.toMatchObject({
+      category: 'upload', message: expect.not.stringContaining('signature=must-not-leak'),
+    });
+    expect(uploadFetch).not.toHaveBeenCalled();
+  });
 });

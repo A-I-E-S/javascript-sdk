@@ -22,6 +22,23 @@ export interface FetchTransportOptions {
   timeoutMs?: number;
 }
 
+function validateSecureBaseUrl(value: string): void {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch (cause) {
+    throw new AfricaniesError('baseUrl must be an absolute HTTP(S) URL.', {
+      category: 'configuration', cause,
+    });
+  }
+  const localHttp = url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+  if (url.protocol !== 'https:' && !localHttp) {
+    throw new AfricaniesError('baseUrl must use HTTPS (HTTP is allowed only for localhost).', {
+      category: 'configuration',
+    });
+  }
+}
+
 interface RequestSignal {
   signal: AbortSignal;
   timedOut(): boolean;
@@ -84,6 +101,7 @@ export function createFetchTransport(options: FetchTransportOptions): Africanies
   if (typeof fetchImplementation !== 'function') {
     throw new AfricaniesError('A fetch implementation is required.', { category: 'configuration' });
   }
+  validateSecureBaseUrl(options.baseUrl);
   const baseUrl = options.baseUrl.replace(/\/+$/, '');
   const timeoutMs = options.timeoutMs ?? 30_000;
 

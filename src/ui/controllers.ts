@@ -126,6 +126,23 @@ export class RateSelectionController extends ObservableState<RateSelectionState>
   }
 
   async load(): Promise<ShipmentRate[]> {
+    const validation = validateRateRequest(this.state.request, this.#client.shipmentMode);
+    if (!validation.valid) {
+      this.#abortController?.abort();
+      this.#loadId += 1;
+      const invalidRequest = new AfricaniesError('Shipment rate request contains invalid fields.', {
+        category: 'validation',
+        data: validation.issues,
+      });
+      this.setState({
+        ...this.state,
+        status: 'error',
+        rates: [],
+        selectedSlug: null,
+        error: invalidRequest,
+      });
+      throw invalidRequest;
+    }
     this.#abortController?.abort();
     const abortController = new AbortController();
     const loadId = ++this.#loadId;
@@ -196,6 +213,8 @@ export interface PurchaseState {
 export class PurchaseController extends ObservableState<PurchaseState> {
   readonly #client: AfricaniesClient;
   #inFlight: Promise<ApiEnvelope<ShipmentPurchaseResult>> | undefined;
+  #abortController: AbortController | undefined;
+  #submissionId = 0;
 
   constructor(client: AfricaniesClient, request: ShipmentPurchaseRequest) {
     super({ status: 'idle', request, response: null, error: null, issues: [] });
@@ -217,9 +236,17 @@ export class PurchaseController extends ObservableState<PurchaseState> {
     }
 
     this.setState({ ...this.state, status: 'submitting', issues: [], error: null });
-    this.#inFlight = this.#client.shipments.purchase(this.state.request, signal).then(
+    const abortController = new AbortController();
+    const submissionId = ++this.#submissionId;
+    this.#abortController = abortController;
+    const forwardAbort = () => abortController.abort(signal?.reason);
+    if (signal) {
+      if (signal.aborted) abortController.abort(signal.reason);
+      else signal.addEventListener('abort', forwardAbort, { once: true });
+    }
+    const purchasePromise = this.#client.shipments.purchase(this.state.request, abortController.signal).then(
       (response) => {
-        this.setState({ ...this.state, status: 'success', response, error: null });
+        if (submissionId === this.#submissionId) this.setState({ ...this.state, status: 'success', response, error: null });
         return response;
       },
       (error: unknown) => {
@@ -227,15 +254,34 @@ export class PurchaseController extends ObservableState<PurchaseState> {
           error instanceof AfricaniesError
             ? error
             : new AfricaniesError('Unable to purchase shipment.', { category: 'network', cause: error });
-        this.setState({ ...this.state, status: 'error', error: normalized });
+        if (submissionId === this.#submissionId) this.setState({ ...this.state, status: 'error', error: normalized });
         throw normalized;
       },
     );
-    void this.#inFlight.then(
-      () => { this.#inFlight = undefined; },
-      () => { this.#inFlight = undefined; },
+    this.#inFlight = purchasePromise;
+    void purchasePromise.then(
+      () => this.finishSubmission(purchasePromise, abortController, signal, forwardAbort),
+      () => this.finishSubmission(purchasePromise, abortController, signal, forwardAbort),
     );
-    return this.#inFlight;
+    return purchasePromise;
+  }
+
+  cancel(): void {
+    this.#submissionId += 1;
+    this.#abortController?.abort();
+    this.#abortController = undefined;
+    this.#inFlight = undefined;
+  }
+
+  private finishSubmission(
+    promise: Promise<ApiEnvelope<ShipmentPurchaseResult>>,
+    abortController: AbortController,
+    signal: AbortSignal | undefined,
+    forwardAbort: () => void,
+  ): void {
+    signal?.removeEventListener('abort', forwardAbort);
+    if (this.#inFlight === promise) this.#inFlight = undefined;
+    if (this.#abortController === abortController) this.#abortController = undefined;
   }
 }
 

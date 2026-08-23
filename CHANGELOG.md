@@ -1,8 +1,22 @@
 # Changelog
 
-## 0.2.0 — Unpublished
+## 0.3.0 — Unreleased
 
-This release is prepared locally. It has not been published and no npm dist-tag has been changed.
+Candidate version selected for the narrow stabilization changes. The package version remains `0.2.0`, and no publication is implied or authorized by this entry.
+
+### Reliability and security
+
+- Custom elements now treat their assigned client as authoritative for environment and shipment-mode attributes, and mode-dependent stages reject mismatched requests before making an API call.
+- Purchase operations are cancelled when their request or client changes, preventing a stale in-flight response from replacing newer state.
+- Live API base URLs and presigned upload URLs require HTTPS, with a loopback HTTP exception for local development and tests.
+- Regression tests cover client-authoritative rendering, mode preflight, stale purchase cancellation, and transport URL enforcement.
+- Release, migration, getting-started, and security documentation now reflects the immutable published `0.2.0` baseline, unresolved provenance and API variances, and the pending final live-browser credential policy.
+
+## 0.2.0 — Published 2026-08-18
+
+This version is published on npm as `@africanies/shipping@0.2.0` and is now an immutable stabilization baseline. Do not overwrite or republish it. Registry inspection confirms the version and publication timestamp, but the exact source commit, npm publisher identity, and publication-approval provenance remain unverified.
+
+The contract corrections below reflect owner-confirmed sandbox evidence. Material differences from the public API documentation remain tracked and must not be interpreted as corrections to the public API/OpenAPI description.
 
 ### Breaking contract corrections
 

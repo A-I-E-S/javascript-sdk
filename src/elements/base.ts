@@ -77,6 +77,8 @@ export function safeExternalUrl(value: unknown): string | undefined {
 export abstract class AfricaniesElement extends HTMLElement {
   static observedAttributes = ['environment', 'shipment-mode'];
   protected readonly root: ShadowRoot;
+  #projectedEnvironment: AfricaniesEnvironment | undefined;
+  #projectedShipmentMode: ShipmentMode | undefined;
 
   constructor() {
     super();
@@ -84,7 +86,7 @@ export abstract class AfricaniesElement extends HTMLElement {
   }
 
   get environment(): AfricaniesEnvironment {
-    return this.getAttribute('environment') === 'live' ? 'live' : 'test';
+    return this.#projectedEnvironment ?? (this.getAttribute('environment') === 'live' ? 'live' : 'test');
   }
 
   set environment(value: AfricaniesEnvironment) {
@@ -92,7 +94,7 @@ export abstract class AfricaniesElement extends HTMLElement {
   }
 
   get shipmentMode(): ShipmentMode {
-    return this.getAttribute('shipment-mode') === 'STN' ? 'STN' : 'SFN';
+    return this.#projectedShipmentMode ?? (this.getAttribute('shipment-mode') === 'STN' ? 'STN' : 'SFN');
   }
 
   set shipmentMode(value: ShipmentMode) {
@@ -104,13 +106,33 @@ export abstract class AfricaniesElement extends HTMLElement {
     this.render();
   }
 
-  attributeChangedCallback(_name: string, _oldValue: string | null, _newValue: string | null): void {
+  attributeChangedCallback(name: string, _oldValue: string | null, newValue: string | null): void {
+    const projectedValue = name === 'environment'
+      ? this.#projectedEnvironment
+      : this.#projectedShipmentMode;
+    if (projectedValue && newValue !== projectedValue) {
+      this.setAttribute(name, projectedValue);
+      return;
+    }
     this.syncEnvironment();
     if (this.isConnected) this.render();
   }
 
   protected syncEnvironment(): void {
     this.dataset.environment = this.environment;
+  }
+
+  protected projectClientConfiguration(
+    client: { readonly environment: AfricaniesEnvironment; readonly shipmentMode: ShipmentMode } | undefined,
+  ): void {
+    this.#projectedEnvironment = client?.environment;
+    this.#projectedShipmentMode = client?.shipmentMode;
+    if (client) {
+      if (this.getAttribute('environment') !== client.environment) this.setAttribute('environment', client.environment);
+      if (this.getAttribute('shipment-mode') !== client.shipmentMode) this.setAttribute('shipment-mode', client.shipmentMode);
+    }
+    this.syncEnvironment();
+    if (this.isConnected) this.render();
   }
 
   protected emit<T>(name: string, detail: T): void {

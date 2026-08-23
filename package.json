@@ -59,6 +59,7 @@
     "test:browser": "npm run build && playwright test",
     "test:browser:built": "playwright test",
     "pack:check": "npm pack --dry-run",
+    "pack:consumer": "node ./scripts/verify-packed-consumer.mjs",
     "preview": "vite preview",
     "verify": "npm run check && npm test && npm run build && npm run pack:check"
   },

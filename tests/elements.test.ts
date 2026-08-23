@@ -78,6 +78,21 @@ describe('AfricanIES custom elements', () => {
       .toEqual(['inches', 'LBS', 'Disabled', 'Enabled']);
   });
 
+  it('keeps client environment and mode authoritative over host attributes', () => {
+    const element = document.createElement('africanies-shipment-builder');
+    element.client = fakeClient({ environment: 'live', shipmentMode: 'STN' });
+    document.body.append(element);
+    element.setAttribute('environment', 'test');
+    element.setAttribute('shipment-mode', 'SFN');
+    expect(element.environment).toBe('live');
+    expect(element.shipmentMode).toBe('STN');
+    expect(element.getAttribute('environment')).toBe('live');
+    expect(element.getAttribute('shipment-mode')).toBe('STN');
+    expect(element.dataset.environment).toBe('live');
+    expect(element.value.units).toEqual({ dimension: 'inches', mass: 'LBS' });
+    expect(element.shadowRoot?.textContent).not.toContain('Test mode');
+  });
+
   it('normalizes host-supplied locked mode and address-role fields', () => {
     const element = document.createElement('africanies-shipment-builder');
     element.setAttribute('shipment-mode', 'STN');
@@ -173,6 +188,72 @@ describe('AfricanIES custom elements', () => {
     expect(element.shadowRoot!.querySelector('a[href="https://example.test/invoice"]')).not.toBeNull();
   });
 
+  it('drops an in-flight purchase and its events when detached', async () => {
+    let resolvePurchase!: (value: unknown) => void;
+    const purchase = vi.fn().mockImplementation(() => new Promise((resolve) => { resolvePurchase = resolve; }));
+    const element = document.createElement('africanies-purchase-confirmation');
+    element.client = fakeClient({ shipments: { purchase } });
+    element.request = purchaseRequest();
+    const complete = vi.fn();
+    element.addEventListener('africanies-complete', complete);
+    document.body.append(element);
+    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="purchase"]')!.click();
+    element.remove();
+    resolvePurchase({ success: true, status_code: 200, message: 'ok', data: {
+      reference: 'STALE', tracking_number: 'STALE', tracking_url: null,
+      documents: { waybill_doc: null, insurance_doc: null, invoice_doc: null },
+      waybill_is_url: 1, insurance_is_url: 1, invoice_is_url: 1, mode: 'sfn',
+    } });
+    await nextTask();
+    expect(complete).not.toHaveBeenCalled();
+    document.body.append(element);
+    expect(element.shadowRoot!.textContent).toContain('Purchase shipment');
+    expect(element.shadowRoot!.textContent).not.toContain('Shipment confirmed');
+  });
+
+  it('ignores completion from a purchase superseded by a new request', async () => {
+    let resolvePurchase!: (value: unknown) => void;
+    const purchase = vi.fn().mockImplementation(() => new Promise((resolve) => { resolvePurchase = resolve; }));
+    const element = document.createElement('africanies-purchase-confirmation');
+    element.client = fakeClient({ shipments: { purchase } });
+    element.request = purchaseRequest();
+    const complete = vi.fn();
+    element.addEventListener('africanies-complete', complete);
+    document.body.append(element);
+    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="purchase"]')!.click();
+    const replacement = purchaseRequest();
+    replacement.external_reference = 'REPLACEMENT';
+    element.request = replacement;
+    resolvePurchase({ success: true, status_code: 200, message: 'ok', data: {
+      reference: 'STALE', tracking_number: 'STALE', tracking_url: null,
+      documents: { waybill_doc: null, insurance_doc: null, invoice_doc: null },
+      waybill_is_url: 1, insurance_is_url: 1, invoice_is_url: 1, mode: 'sfn',
+    } });
+    await nextTask();
+    expect(complete).not.toHaveBeenCalled();
+    expect(element.shadowRoot!.textContent).toContain('REPLACEMENT');
+    expect(element.shadowRoot!.textContent).not.toContain('Shipment confirmed');
+  });
+
+  it('ignores a stale rejection after the client is replaced', async () => {
+    let rejectPurchase!: (reason: unknown) => void;
+    const stalePurchase = vi.fn().mockImplementation(() => new Promise((_resolve, reject) => { rejectPurchase = reject; }));
+    const element = document.createElement('africanies-purchase-confirmation');
+    element.client = fakeClient({ shipments: { purchase: stalePurchase } });
+    element.request = purchaseRequest();
+    const emittedError = vi.fn();
+    element.addEventListener('africanies-error', emittedError);
+    document.body.append(element);
+    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="purchase"]')!.click();
+    element.client = fakeClient({ environment: 'live', shipmentMode: 'SFN', shipments: { purchase: vi.fn() } });
+    rejectPurchase(new AfricaniesError('Stale failure.', { category: 'api', status: 424 }));
+    await nextTask();
+    expect(emittedError).not.toHaveBeenCalled();
+    expect(element.getAttribute('environment')).toBe('live');
+    expect(element.shadowRoot!.textContent).not.toContain('Stale failure.');
+    expect(element.shadowRoot!.textContent).toContain('Purchase shipment');
+  });
+
   it('labels Base64 documents without embedding or logging their contents', async () => {
     const secretBase64 = 'JVBERi0xLjQtc2Vuc2l0aXZlLWRvY3VtZW50';
     const response = { success: true, status_code: 200, message: 'ok', data: {
@@ -229,6 +310,20 @@ describe('AfricanIES custom elements', () => {
     expect(getRates).toHaveBeenCalledTimes(1);
     await element.load();
     expect(getRates).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not send an SFN request after the rate element client is replaced with STN', async () => {
+    const firstGetRates = vi.fn().mockResolvedValue({ success: true, status_code: 200, message: 'ok', data: [] });
+    const stnGetRates = vi.fn();
+    const element = document.createElement('africanies-rate-selection');
+    element.client = fakeClient({ shipments: { getRates: firstGetRates } });
+    element.request = rateRequest();
+    document.body.append(element);
+    await nextTask();
+    element.client = fakeClient({ shipmentMode: 'STN', shipments: { getRates: stnGetRates } });
+    await nextTask();
+    expect(stnGetRates).not.toHaveBeenCalled();
+    expect(element.shadowRoot!.textContent).toContain('invalid fields');
   });
 
   it('renders numeric-string rate amounts without throwing', async () => {

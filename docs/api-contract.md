@@ -37,4 +37,6 @@ The API considers the same `external_reference` a duplicate after its associated
 
 File generation accepts objects containing `extension`, `mime_type`, and `folder`. The response supplies `upload_url` and `s3_key`. Upload uses presigned PUT; only a successfully uploaded `s3_key` should be attached to item-level `documents_s3_key` or `photos_s3_key` arrays.
 
+Remote signed upload URLs must use HTTPS and are rejected before any file bytes are sent when they use plain HTTP. HTTP is accepted only for `localhost`, `127.0.0.1`, and `[::1]` development endpoints.
+
 Invoices are documented as required for shipments to European countries. The exact country list and upload size/count limits are not yet published, so the SDK does not invent those constraints.

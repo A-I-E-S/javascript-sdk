@@ -2,6 +2,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { AfricaniesError, createFetchTransport } from '../src/index.js';
 
 describe('fetch transport', () => {
+  it('rejects insecure remote base URLs before exposing authorization to fetch', () => {
+    const fetchMock = vi.fn();
+    expect(() => createFetchTransport({
+      baseUrl: 'http://api.example.test/api/v1', authorization: 'must-not-leak',
+      shipmentMode: 'SFN', fetch: fetchMock as typeof fetch,
+    })).toThrowError(/must use HTTPS/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('sends only the approved API headers', async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       new Response(JSON.stringify({ success: true, status_code: 200, message: 'ok', data: [] }), {

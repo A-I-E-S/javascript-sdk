@@ -12,11 +12,13 @@ const client = createAfricaniesClient({
 });
 ```
 
-`runtimeCredential` represents a credential supplied by your application at runtime. Do not copy a secret into browser source or a Vite environment variable: values compiled into frontend JavaScript are visible to users. For production integrations, prefer calling AfricanIES from your backend or provide a custom transport that calls your own authenticated backend.
+`runtimeCredential` represents a credential supplied by your application at runtime. Do not copy a secret into browser source or a Vite environment variable: values compiled into frontend JavaScript are visible to users. Runtime Base64 credentials remain the selected model for current stabilization, but the final live-browser-versus-backend/custom-transport policy is pending. Evaluate the exposure before supplying a live credential to browser code.
 
 The SDK defaults to `test`. Live traffic requires `environment: 'live'`.
 
-The examples on this page describe the unreleased `0.2.0` source tree. If npm still resolves an earlier version, use that version's bundled documentation until `0.2.0` is separately approved and published.
+Custom `baseUrl` values must use HTTPS. Plain HTTP is accepted only for local development hosts: `localhost`, `127.0.0.1`, and `[::1]`.
+
+The examples on this page describe the published `@africanies/shipping@0.2.0` contract. Version `0.2.0` is an immutable registry baseline: do not overwrite or republish it. Its exact source commit, npm publisher identity, and publication-approval provenance remain unverified.
 
 | Environment | API origin |
 |---|---|
@@ -38,6 +40,8 @@ auth: { encodedKey }
 These forms are mutually exclusive. An `encodedKey` is not encoded again.
 
 Base64 is not encryption. Browser consumers can inspect runtime credentials. Prefer a consumer backend and custom transport where the deployment threat model requires stronger isolation.
+
+The public API documentation and owner-confirmed sandbox behavior still differ in material areas, including the account header, STN unit casing, delivery flags, some wire types, and purchase document nullability. This SDK follows the explicitly recorded behavior summarized in [API contract notes](./api-contract.md); those choices do not silently amend the public API/OpenAPI contract.
 
 ## Resource methods
 

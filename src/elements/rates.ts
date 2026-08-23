@@ -16,7 +16,7 @@ export class AfricaniesRateSelectionElement extends AfricaniesElement {
   #controller: RateSelectionController | undefined;
   #unsubscribe: (() => void) | undefined;
 
-  set client(value: AfricaniesClient | undefined) { this.#client = value; if (value) { this.environment = value.environment; this.shipmentMode = value.shipmentMode; } this.connectController(); }
+  set client(value: AfricaniesClient | undefined) { this.#client = value; this.projectClientConfiguration(value); this.connectController(); }
   get client(): AfricaniesClient | undefined { return this.#client; }
   set request(value: ShipmentRateRequest | undefined) { this.#request = value; this.connectController(); }
   get request(): ShipmentRateRequest | undefined { return this.#request; }

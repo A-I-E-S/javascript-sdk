@@ -24,8 +24,9 @@ export class AfricaniesPurchaseConfirmationElement extends AfricaniesElement {
   #request: ShipmentPurchaseRequest | undefined;
   #controller: PurchaseController | undefined;
   #unsubscribe: (() => void) | undefined;
+  #connectionId = 0;
 
-  set client(value: AfricaniesClient | undefined) { this.#client = value; if (value) { this.environment = value.environment; this.shipmentMode = value.shipmentMode; } this.connectController(); }
+  set client(value: AfricaniesClient | undefined) { this.#client = value; this.projectClientConfiguration(value); this.connectController(); }
   get client(): AfricaniesClient | undefined { return this.#client; }
   set request(value: ShipmentPurchaseRequest | undefined) { this.#request = value; this.connectController(); }
   get request(): ShipmentPurchaseRequest | undefined { return this.#request; }
@@ -36,8 +37,11 @@ export class AfricaniesPurchaseConfirmationElement extends AfricaniesElement {
   }
 
   disconnectedCallback(): void {
+    this.#connectionId += 1;
     this.#unsubscribe?.();
     this.#unsubscribe = undefined;
+    this.#controller?.cancel();
+    this.#controller = undefined;
   }
 
   protected render(): void {
@@ -60,18 +64,23 @@ export class AfricaniesPurchaseConfirmationElement extends AfricaniesElement {
   }
 
   private async submit(): Promise<void> {
-    if (!this.#controller) return;
+    const controller = this.#controller;
+    if (!controller) return;
+    const connectionId = this.#connectionId;
     try {
-      const response = await this.#controller.submit();
+      const response = await controller.submit();
+      if (!this.isConnected || controller !== this.#controller || connectionId !== this.#connectionId) return;
       this.emit('africanies-purchased', response);
       this.emit('africanies-complete', response);
     } catch (error) {
+      if (!this.isConnected || controller !== this.#controller || connectionId !== this.#connectionId) return;
       this.emit('africanies-error', error);
     }
   }
 
   private connectController(): void {
-    this.#unsubscribe?.(); this.#unsubscribe = undefined; this.#controller = undefined;
+    this.#connectionId += 1;
+    this.#unsubscribe?.(); this.#unsubscribe = undefined; this.#controller?.cancel(); this.#controller = undefined;
     if (!this.#client || !this.#request) { if (this.isConnected) this.render(); return; }
     this.#controller = new PurchaseController(this.#client, this.#request);
     this.subscribeController();

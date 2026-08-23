@@ -73,12 +73,12 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
   get client(): AfricaniesClient | undefined { return this.#client; }
   set client(value: AfricaniesClient | undefined) {
     this.#client = value;
-    if (value) { this.environment = value.environment; this.shipmentMode = value.shipmentMode; }
+    this.projectClientConfiguration(value);
   }
 
   override attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null): void {
     if (name === 'shipment-mode' && oldValue !== newValue && this.#value) {
-      applyModeRules(this.#value, newValue === 'STN' ? 'STN' : 'SFN');
+      applyModeRules(this.#value, this.shipmentMode);
     }
     super.attributeChangedCallback(name, oldValue, newValue);
   }

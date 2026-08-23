@@ -240,6 +240,43 @@ describe('UI contracts', () => {
     expect(controller.state.rates[0]?.slug).toBe('new');
   });
 
+  it('rejects a rate request that conflicts with the client mode before transport', async () => {
+    const getRates = vi.fn();
+    const client = { shipmentMode: 'STN', shipments: { getRates } } as unknown as AfricaniesClient;
+    const controller = new RateSelectionController(client, rateRequest());
+    await expect(controller.load()).rejects.toMatchObject({
+      category: 'validation',
+      data: expect.arrayContaining([expect.objectContaining({ path: 'units.mass' })]),
+    });
+    expect(getRates).not.toHaveBeenCalled();
+    expect(controller.state).toMatchObject({ status: 'error', rates: [], selectedSlug: null });
+    expect(controller.state.error).toMatchObject({ category: 'validation' });
+  });
+
+  it('does not let an old cancelled purchase clear a newer in-flight submission', async () => {
+    let resolveFirst!: (value: unknown) => void;
+    let resolveSecond!: (value: unknown) => void;
+    const response = { success: true, status_code: 200, message: 'ok', data: {
+      reference: 'EX-1', tracking_number: 'TRK-1', tracking_url: null,
+      documents: { waybill_doc: null, insurance_doc: null, invoice_doc: null },
+      waybill_is_url: 1, insurance_is_url: 1, invoice_is_url: 1, mode: 'sfn',
+    } };
+    const purchase = vi.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve; }));
+    const client = { shipmentMode: 'SFN', shipments: { purchase } } as unknown as AfricaniesClient;
+    const controller = new PurchaseController(client, purchaseRequest());
+    const first = controller.submit();
+    controller.cancel();
+    const second = controller.submit();
+    resolveFirst(response);
+    await expect(first).resolves.toEqual(response);
+    expect(controller.submit()).toBe(second);
+    expect(purchase).toHaveBeenCalledTimes(2);
+    resolveSecond(response);
+    await expect(second).resolves.toEqual(response);
+  });
+
   it('accepts finite numeric-string rate amounts from the API', async () => {
     const stringAmountRate = { ...shipmentRate(), payment_amount: '128766.1429' };
     const getRates = vi.fn().mockResolvedValue({

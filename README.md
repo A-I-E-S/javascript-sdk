@@ -2,7 +2,7 @@
 
 Official TypeScript/JavaScript client and framework-neutral UI for AfricanIES shipping integrations.
 
-> **Implementation status:** `0.2.0` contract correction prepared locally and **not published**. The public npm `latest` tag remains on the previously published release until a separate release approval.
+> **Release status:** `@africanies/shipping@0.2.0` is published on npm and is the immutable stabilization baseline. Its exact source commit, npm publisher identity, and publication-approval provenance have not been verified; publication of any later version still requires separate approval.
 
 ## Installation
 
@@ -36,6 +36,8 @@ auth: { publicKey: '...', privateKey: '...' }
 
 Base64 is reversible encoding, not encryption. Never embed a credential in a published bundle, source map, repository, or log.
 
+Runtime Base64 credentials remain the selected integration model for the current stabilization work. The final policy for live browser integrations versus a backend/custom transport is pending; assess browser exposure before using a live credential.
+
 ## Package entry points
 
 - `@africanies/shipping` — headless client and exact wire types
@@ -47,6 +49,8 @@ Base64 is reversible encoding, not encryption. Never embed a credential in a pub
 Detailed guides are under [`docs/`](./docs/).
 
 Version `0.2.0` corrects shipment wire types based on observed rate and purchase payloads. It contains breaking TypeScript and rate-to-purchase adapter changes; see [the migration guide](./docs/migrating-to-0.2.md) and [changelog](./CHANGELOG.md).
+
+Some implemented request details intentionally follow owner-confirmed sandbox evidence that differs from the public API documentation. Review [the API contract notes](./docs/api-contract.md); do not infer that these variances have been corrected in the public API/OpenAPI description.
 
 ## Development
 

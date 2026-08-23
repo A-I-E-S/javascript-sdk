@@ -127,6 +127,24 @@ function normalizeBaseOrigin(value: string): string {
   return url.toString().replace(/\/+$/, '');
 }
 
+function validateSecureUploadUrl(value: string): void {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch (cause) {
+    throw new AfricaniesError('AfricanIES returned an invalid signed upload URL.', {
+      category: 'upload', cause,
+    });
+  }
+  const localHttp = url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+  if (url.protocol !== 'https:' && !localHttp) {
+    throw new AfricaniesError(
+      `Signed upload URL must use HTTPS (HTTP is allowed only for localhost): ${redactUrl(value)}.`,
+      { category: 'upload' },
+    );
+  }
+}
+
 function validateEnvironment(value: unknown): asserts value is AfricaniesEnvironment {
   if (value !== 'test' && value !== 'live') {
     throw new AfricaniesError('environment must be either "test" or "live".', {
@@ -210,6 +228,7 @@ export function createAfricaniesClient(config: AfricaniesClientConfig): Africani
             category: 'upload',
           });
         }
+        validateSecureUploadUrl(target.upload_url);
         const fetchImplementation = options.fetch ?? config.fetch ?? globalThis.fetch;
         try {
           const response = await fetchImplementation(target.upload_url, {

@@ -117,7 +117,9 @@ describe('UI contracts', () => {
   });
 
   it('emits numeric file flags and supplied item file references only', () => {
-    const result = preparePurchaseRequest(rateRequest(), {
+    const request = rateRequest();
+    request.is_insured = '1';
+    const result = preparePurchaseRequest(request, {
       assignedDate: '2026-08-20', externalReference: 'ORDER-1001', rate: shipmentRate(),
       fileIsUrl: 1,
       itemFiles: { '0:0': { documents_s3_key: ['documents/example.pdf'] } },
@@ -126,6 +128,7 @@ describe('UI contracts', () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.request.file_is_url).toBe(1);
+      expect(result.request.is_insured).toBe('1');
       expect(result.request.boxes[0]!.items[0]!.documents_s3_key).toEqual(['documents/example.pdf']);
       expect(result.request.boxes[0]!.items[0]).not.toHaveProperty('photos_s3_key');
     }
@@ -150,6 +153,22 @@ describe('UI contracts', () => {
     expect(result.issues).toEqual(expect.arrayContaining([
       expect.objectContaining({ path: 'file_is_url' }),
     ]));
+  });
+
+  it('rejects invalid purchase insurance flags before transport', async () => {
+    const request = purchaseRequest();
+    (request as unknown as { is_insured: unknown }).is_insured = 1;
+    const result = validatePurchaseRequest(request, 'SFN', new Date(2026, 7, 18));
+    expect(result.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: 'is_insured' }),
+    ]));
+    const purchase = vi.fn();
+    const client = { shipmentMode: 'SFN', shipments: { purchase } } as unknown as AfricaniesClient;
+    await expect(new PurchaseController(client, request).submit()).rejects.toMatchObject({
+      category: 'validation',
+      data: expect.arrayContaining([expect.objectContaining({ path: 'is_insured' })]),
+    });
+    expect(purchase).not.toHaveBeenCalled();
   });
 
   it('rejects invalid dates and string file flags during purchase preparation', () => {

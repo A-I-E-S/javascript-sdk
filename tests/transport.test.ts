@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AfricaniesError, createFetchTransport } from '../src/index.js';
+import { AfricaniesError, createAfricaniesClient, createFetchTransport } from '../src/index.js';
+import { purchaseRequest } from './fixtures.js';
 
 describe('fetch transport', () => {
   it('rejects insecure remote base URLs before exposing authorization to fetch', () => {
@@ -34,6 +35,24 @@ describe('fetch transport', () => {
     expect(headers.get('X-Shipment-Mode')).toBe('SFN');
     expect(headers.get('Content-Type')).toBe('application/json');
     expect(headers.has('X-Account-Number')).toBe(false);
+  });
+
+  it('serializes optional purchase flags unchanged in the JSON body', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(JSON.stringify({ success: true, status_code: 200, message: 'ok', data: {} }), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      }));
+    const client = createAfricaniesClient({
+      shipmentMode: 'SFN', auth: { encodedKey: 'secret' },
+      baseUrl: 'https://example.test', fetch: fetchMock as typeof fetch,
+    });
+    const request = purchaseRequest();
+    request.is_insured = '1';
+    request.file_is_url = 1;
+    await client.shipments.purchase(request);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('https://example.test/api/v1/shipment/purchase');
+    expect(JSON.parse(String(init?.body))).toMatchObject({ is_insured: '1', file_is_url: 1 });
   });
 
   it('turns API failures into typed errors without exposing authorization', async () => {

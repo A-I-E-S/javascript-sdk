@@ -12,7 +12,7 @@ const html = (value) => String(value).replace(/[&<>'"]/g, (character) => ({ '&':
 const state = { client: null, cart: {}, classifications: {}, productSearches: {}, lines: [], packaging: null, rateRequest: null, rates: [], quote: null, selection: null, selectedRate: null, payment: null, purchaseIntent: null, externalReference: null, purchaseState: 'idle', documentUrls: [] };
 
 function populateReceiverStates(selected='') { const country=DEMO_COUNTRIES.find((entry)=>entry.code===$('#receiver-country').value); const stateSelect=$('#receiver-state'); stateSelect.innerHTML=`<option value="">Select state</option>${(country?.states??[]).map((entry)=>`<option value="${entry.code}">${html(entry.name)}</option>`).join('')}`; stateSelect.disabled=!country?.states?.length; stateSelect.value=selected; }
-function populateReceiverCountries() { const country=$('#receiver-country'); country.innerHTML=DEMO_COUNTRIES.map((entry)=>`<option value="${entry.code}">${html(entry.name)}</option>`).join(''); country.value='US'; populateReceiverStates('MA'); }
+function populateReceiverCountries() { const country=$('#receiver-country'); country.innerHTML=`<option value="">Select country</option>${DEMO_COUNTRIES.map((entry)=>`<option value="${entry.code}">${html(entry.name)}</option>`).join('')}`; country.value='US'; populateReceiverStates('MA'); }
 
 function error(message = '') { const node = $('#app-error'); node.textContent = message; node.hidden = !message; if (message) node.focus(); }
 function userFacingError(cause, fallback) {

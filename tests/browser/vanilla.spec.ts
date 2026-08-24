@@ -120,7 +120,7 @@ async function reachPaymentWithQuantity(page: Page, quantity: string, insured = 
 test('uninsured SFN checkout preserves unit weight, selected rate, payment, tracking and URL documents', async ({ page }) => {
   const fixture = await mockApi(page); await login(page); await reachPayment(page); await page.locator('#pay-button').click();
   await expect(page.locator('#result-section')).toBeVisible(); await expect(page.getByText('TRACK-UAT-1')).toBeVisible();
-  const paymentRecord = page.locator('#shipment-result .payment-record');
+  const paymentRecord = page.locator('#result-section .payment-record');
   await expect(paymentRecord.getByText('PAYDEMO FULL ORDER + DELIVERY', { exact: true })).toBeVisible();
   await expect(paymentRecord.getByRole('heading', { name: 'Payment recorded' })).toBeVisible(); await expect(paymentRecord.locator('.payment-status-badge')).toHaveText('Paid');
   await expect(paymentRecord.locator('.payment-record-total')).toContainText('30,500'); await expect(paymentRecord).toContainText(/PAYDEMO-/);
@@ -129,7 +129,7 @@ test('uninsured SFN checkout preserves unit weight, selected rate, payment, trac
   await expect(paymentRecord.locator('dl div').filter({ hasText: 'Insurance' })).toContainText('Not requested');
   await expect(paymentRecord.locator('dl div').filter({ hasText: 'Carrier' })).toContainText(rate.name); await expect(paymentRecord.locator('dl div').filter({ hasText: 'Confirmed' })).toContainText('Confirmed by PayDemo');
   await expect(page.getByRole('link', { name: /Track shipment/ })).toHaveAttribute('href', /^https:/);
-  const insuranceDocument = page.locator('#shipment-result .document-card').filter({ hasText: 'Insurance certificate' });
+  const insuranceDocument = page.locator('#result-section .document-card').filter({ hasText: 'Insurance certificate' });
   await expect(insuranceDocument.getByText('Not requested', { exact: true })).toBeVisible(); expect(fixture.purchaseCount).toBe(1);
   expect(fixture.purchase).toMatchObject({ file_is_url: 1, is_insured: '0', shipment_method_slug: rate.slug, currency: 'NGN' });
   const address = fixture.purchase?.address as { sender: { country: string }; receiver: { country: string } };
@@ -201,14 +201,14 @@ test('PayDemo review presents merchandise, selected delivery, carrier and full t
 test('manual host lab completes classified boxes, rates, full PayDemo, purchase, tracking and URL documents', async ({ page }) => {
   const fixture = await mockApi(page); await reachManualPayment(page);
   await expect(page.locator('#manual-workspace .shared-paydemo')).toContainText(rate.name); await expect(page.locator('#manual-workspace .shared-paydemo')).toContainText('15,000');
-  await page.locator('#manual-pay').click(); await expect(page.locator('.manual-result')).toContainText('TRACK-UAT-1');
-  const paymentRecord = page.locator('.manual-result .payment-record');
+  await page.locator('#manual-pay').click(); await expect(page.locator('#manual-workspace .shared-shipment-result')).toContainText('TRACK-UAT-1');
+  const paymentRecord = page.locator('#manual-workspace .shared-shipment-result .payment-record');
   await expect(paymentRecord.getByText('PAYDEMO FULL ORDER + DELIVERY', { exact: true })).toBeVisible();
   await expect(paymentRecord.getByRole('heading', { name: 'Payment recorded' })).toBeVisible(); await expect(paymentRecord.locator('.payment-status-badge')).toHaveText('Paid');
   await expect(paymentRecord.locator('.payment-record-total')).toContainText('15,000'); await expect(paymentRecord).toContainText(/PAYDEMO-/);
   await expect(paymentRecord.locator('dl div').filter({ hasText: 'Merchandise' })).toContainText('3,000');
   await expect(paymentRecord.locator('dl div').filter({ hasText: 'Delivery' })).toContainText('12,000'); await expect(paymentRecord.locator('dl div').filter({ hasText: 'Confirmed' })).toContainText('Confirmed by PayDemo');
-  await expect(page.locator('.manual-result .document-card')).toHaveCount(3); expect(fixture.purchaseCount).toBe(1);
+  await expect(page.locator('#manual-workspace .shared-shipment-result .document-card')).toHaveCount(3); expect(fixture.purchaseCount).toBe(1);
   expect(fixture.purchase).toMatchObject({ file_is_url: 1, is_insured: '0', shipment_method_slug: rate.slug });
   const boxes = fixture.purchase?.boxes as Array<{ weight: number; items: Array<{ weight: number; quantity: number; product_hs_code: string }> }>;
   expect(boxes[0]).toMatchObject({ weight: 5 }); expect(boxes[0]!.items).toHaveLength(2); expect(boxes[0]!.items[0]).toMatchObject({ weight: 1.5, quantity: 1, product_hs_code: product.hs_code });
@@ -221,6 +221,15 @@ test('automatic and manual checkout mount identical shared PayDemo structure', a
   await reachManualPayment(page);
   const manual=await signature('#manual-workspace .shared-paydemo');
   expect(manual).toEqual(automatic);
+});
+
+test('automatic and manual checkout mount identical complete shipment results',async({page},testInfo)=>{
+  test.skip(testInfo.project.name!=='chromium','One engine proves shared renderer identity; result behavior runs across the route matrix.');
+  await mockApi(page);await login(page);await reachPayment(page);await page.locator('#pay-button').click();
+  const signature=async(selector:string)=>page.locator(selector).evaluate((root)=>{const walk=(node:Element):unknown=>[node.tagName.toLowerCase(),[...node.classList].sort(),[...node.children].map((child)=>walk(child))];return walk(root);});
+  const automatic=await signature('#result-section .shared-shipment-result');
+  await reachManualPayment(page);await page.locator('#manual-pay').click();
+  const manual=await signature('#manual-workspace .shared-shipment-result');expect(manual).toEqual(automatic);
 });
 
 test('automatic rates expose shared loading, error and refresh behavior',async({page},testInfo)=>{
@@ -280,6 +289,24 @@ test('oversized Base64 document is rejected before browser decoding', async ({ p
   await mockApi(page, { purchaseData: data }); await login(page); await reachPayment(page); await page.locator('#pay-button').click();
   await expect(page.getByText('Base64 document exceeds the 10 MB browser download limit')).toBeVisible();
 });
+
+for (const documentState of ['base64','malformed','oversized'] as const) {
+  test(`manual result shares ${documentState} document behavior`,async({page},testInfo)=>{
+    test.skip(testInfo.project.name!=='chromium','One engine proves manual representation parity; the shared renderer runs across the route matrix.');
+    const data=purchaseResult(false,true); const documents=data.documents as Record<string,unknown>;
+    if(documentState==='malformed')documents.invoice_doc='not-base64!';
+    if(documentState==='oversized')documents.invoice_doc='A'.repeat(13_981_020);
+    await mockApi(page,{purchaseData:data});await reachManualPayment(page);await page.locator('#manual-pay').click();
+    const result=page.locator('#manual-workspace .shared-shipment-result');
+    if(documentState==='base64'){
+      await expect(result.locator('.document-card[download]')).toHaveCount(2);
+      await expect(result.locator('.payment-record dl div').filter({hasText:'Insurance'})).toContainText('Not requested');
+      await expect(result.locator('.document-card').filter({hasText:'Insurance certificate'}).getByText('Not requested',{exact:true})).toBeVisible();
+    }
+    if(documentState==='malformed')await expect(result.getByText('Malformed Base64 document')).toBeVisible();
+    if(documentState==='oversized')await expect(result.getByText('Base64 document exceeds the 10 MB browser download limit')).toBeVisible();
+  });
+}
 
 test('quantity two remains two physical units with exact unit weight and gross packaging semantics', async ({ page }) => {
   const fixture = await mockApi(page); await login(page); await reachPaymentWithQuantity(page, '2'); await page.locator('#pay-button').click();
@@ -367,12 +394,13 @@ test('built Pages artifact loads and navigates both demo routes without asset or
   page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
   await page.goto('http://127.0.0.1:4175/', { waitUntil: 'networkidle' });
   await expect(page).toHaveTitle(/Africanies Store/); await expect(page.locator('.test-badge')).toContainText('SANDBOX · SFN');
+  await expect(page.locator('link[rel="stylesheet"]')).toHaveCount(1);await expect(page.locator('link[rel="stylesheet"]')).toHaveAttribute('href',/\/assets\/.*\.css$/);
   await expect(page.locator('#encoded-key')).toBeVisible(); await page.getByRole('link', { name: 'Manual packaging lab' }).click();
   await expect(page).toHaveURL(/manual\.html$/); await expect(page.locator('#manual-key')).toBeVisible(); await expect(page).toHaveTitle(/Manual Packaging Lab/);
   await page.locator('#manual-key').fill(credential); await page.getByRole('button', { name: 'Validate and open lab' }).click();
   const builtBuilder = page.locator('africanies-shipment-builder');
   await expect(builtBuilder.getByRole('heading', { name: 'Create shipment' })).toBeVisible(); await expect(builtBuilder.getByRole('button', { name: 'Continue' })).toBeVisible();
-  expect(await builtBuilder.evaluate((element) => element.constructor === customElements.get('africanies-shipment-builder') && element.shadowRoot !== null)).toBe(true);
+  expect(await builtBuilder.evaluate((element) => element.constructor === customElements.get('africanies-shipment-builder') && element.shadowRoot !== null && (element.shadowRoot.adoptedStyleSheets.length>0||Boolean(element.shadowRoot.querySelector('style')?.textContent?.includes('--africanies-accent'))))).toBe(true);
   await page.getByRole('link', { name: 'Automatic checkout' }).click(); await expect(page.locator('#encoded-key')).toBeVisible();
   expect(failures).toEqual([]); expect(consoleErrors).toEqual([]);
 });

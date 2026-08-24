@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { AfricaniesClient } from '../src/client.js';
 import type { ShipmentRateDraft } from '../src/types.js';
 import { AfricaniesError } from '../src/errors.js';
@@ -120,11 +122,42 @@ describe('AfricanIES custom elements', () => {
   });
 
   it('contains wide summary tables below the mobile workflow actions', () => {
-    const element = document.createElement('africanies-shipment-builder'); document.body.append(element);
-    const styles = element.shadowRoot!.querySelector('style')!.textContent ?? '';
-    expect(styles).toContain('details.card { max-width:100%; overflow-x:auto; }');
-    expect(styles).toContain('form.shell > .actions');
+    const styles = readFileSync(join(process.cwd(), 'src/elements/tailwind.css'), 'utf8');
+    expect(styles).toContain('details.card{max-width:100%;overflow-x:auto}');
+    expect(styles).toContain('form.shell>.actions');
     expect(styles).toContain('.stack>*{min-width:0}');
+  });
+
+  it('owns Tailwind as an explicit build-time Shadow DOM stylesheet', () => {
+    const styles = readFileSync(join(process.cwd(), 'src/elements/tailwind.css'), 'utf8');
+    expect(styles).toContain('@import "tailwindcss" source(none)');
+    expect(styles).toContain('@source "./**/*.ts"');
+    expect(styles).toContain('--color-africanies-accent');
+  });
+
+  it('uses one deterministic fallback style in every element', () => {
+    for (const name of ['africanies-shipment-builder','africanies-rate-selection','africanies-purchase-confirmation']) {
+      const element=document.createElement(name);document.body.append(element);
+      expect(element.shadowRoot!.querySelectorAll('style[data-africanies-styles]')).toHaveLength(1);
+    }
+  });
+
+  it('emits no inline style when constructable stylesheets are supported', () => {
+    const replaceDescriptor=Object.getOwnPropertyDescriptor(CSSStyleSheet.prototype,'replaceSync');
+    const adoptedDescriptor=Object.getOwnPropertyDescriptor(ShadowRoot.prototype,'adoptedStyleSheets');
+    const sheets=new WeakMap<ShadowRoot,CSSStyleSheet[]>();
+    Object.defineProperty(CSSStyleSheet.prototype,'replaceSync',{configurable:true,value:vi.fn()});
+    Object.defineProperty(ShadowRoot.prototype,'adoptedStyleSheets',{configurable:true,get(){return sheets.get(this)??[];},set(value){sheets.set(this,value);}});
+    try {
+      for (const name of ['africanies-shipment-builder','africanies-rate-selection','africanies-purchase-confirmation']) {
+        const element=document.createElement(name);document.body.append(element);
+        expect(element.shadowRoot!.adoptedStyleSheets).toHaveLength(1);
+        expect(element.shadowRoot!.querySelector('style')).toBeNull();
+      }
+    } finally {
+      if(replaceDescriptor)Object.defineProperty(CSSStyleSheet.prototype,'replaceSync',replaceDescriptor);else delete (CSSStyleSheet.prototype as {replaceSync?:unknown}).replaceSync;
+      if(adoptedDescriptor)Object.defineProperty(ShadowRoot.prototype,'adoptedStyleSheets',adoptedDescriptor);else delete (ShadowRoot.prototype as {adoptedStyleSheets?:unknown}).adoptedStyleSheets;
+    }
   });
 
   it('keeps client environment and mode authoritative over host attributes', () => {

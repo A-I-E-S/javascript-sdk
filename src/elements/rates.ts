@@ -1,7 +1,7 @@
 import type { AfricaniesClient } from '../client.js';
 import type { ShipmentRateRequest } from '../types.js';
 import { RateSelectionController } from '../ui/controllers.js';
-import { AfricaniesElement, escapeHtml, sharedStyles, testModeMarkup } from './base.js';
+import { AfricaniesElement, escapeHtml, testModeMarkup } from './base.js';
 
 function formatAmount(value: unknown): string {
   if ((typeof value !== 'number' && typeof value !== 'string')
@@ -45,18 +45,7 @@ export class AfricaniesRateSelectionElement extends AfricaniesElement {
 
   protected render(): void {
     const state = this.#controller?.state;
-    this.root.innerHTML = `<style>${sharedStyles}
-      .rates-heading { align-items:center; display:flex; justify-content:space-between; }
-      .rate { align-items:center; display:grid; gap:18px; grid-template-columns:minmax(180px,1.2fr) minmax(150px,.65fr) minmax(180px,.8fr) auto; padding:18px 22px; }
-      .carrier { align-items:center; display:flex; gap:12px; }
-      .carrier-mark { align-items:center; background:var(--africanies-success-bg); border:2px solid var(--africanies-mode); border-radius:999px; color:#087b3c; display:flex; flex:0 0 42px; font-weight:900; height:42px; justify-content:center; }
-      .availability { background:var(--africanies-success-bg); border-radius:10px; color:#087b3c; padding:12px 16px; }
-      .price { font-size:1.08rem; font-weight:850; }
-      .selected { border:2px solid var(--africanies-mode); background:#f4fff8; }
-      .eyebrow { color:var(--africanies-muted); display:block; font-size:12px; margin-bottom:4px; }
-      @media(max-width:760px){ .rate{grid-template-columns:1fr 1fr}.rate>button{grid-column:1/-1;width:100%} }
-      @media(max-width:480px){ .rate{grid-template-columns:1fr} }
-    </style><section class="shell"><div class="topline"><div><h2>Shipment carrier</h2><p class="muted">Select a shipping method to review its final cost.</p></div>${testModeMarkup(this.environment)}</div>
+    this.root.innerHTML = `${this.sharedStyleTag()}<section class="shell"><div class="topline"><div><h2>Shipment carrier</h2><p class="muted">Select a shipping method to review its final cost.</p></div>${testModeMarkup(this.environment)}</div>
       <div class="rates-heading"><h3>Select shipment carrier</h3><span class="muted">Step 1/2</span></div>
       ${!this.#client || !this.#request ? '<div class="alert info">Set both <code>client</code> and <code>request</code> properties to load rates.</div>' : ''}
       ${state?.status === 'loading' ? '<p role="status">Loading rates…</p>' : ''}

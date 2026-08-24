@@ -1,7 +1,9 @@
 import { resolve } from 'node:path';
+import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  plugins: [tailwindcss()],
   build: {
     lib: {
       entry: resolve(import.meta.dirname, 'src/browser.ts'),
@@ -9,7 +11,8 @@ export default defineConfig({
       formats: ['iife'],
       fileName: () => 'africanies-shipping.global.js',
     },
-    sourcemap: true,
+    // The inline Tailwind stylesheet has no trustworthy transform source map.
+    sourcemap: false,
     emptyOutDir: false,
   },
 });

@@ -1,6 +1,7 @@
 import * as Shipping from '@africanies/shipping/browser';
-import './styles.css';
+import './tailwind.css';
 import { mountSharedRates, mountSharedPayDemo } from './shared-checkout-ui.js';
+import { mountSharedShipmentResult } from './shared-shipment-result.js';
 import {
   DEMO_COUNTRIES, DEMO_PRODUCTS, WAREHOUSE_ADDRESS, cartLines, cartTotals, createPackagingInput,
   receiverFromForm, shippingAmount, minimumAssignedDate, payDemoResult,
@@ -9,7 +10,7 @@ import {
 const $ = (selector) => document.querySelector(selector);
 const money = (value, currency = 'NGN') => new Intl.NumberFormat('en-NG', { style: 'currency', currency }).format(Number(value));
 const html = (value) => String(value).replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]);
-const state = { client: null, cart: {}, classifications: {}, productSearches: {}, lines: [], packaging: null, rateRequest: null, rates: [], quote: null, selection: null, selectedRate: null, payment: null, purchaseIntent: null, externalReference: null, purchaseState: 'idle', documentUrls: [] };
+const state = { client: null, cart: {}, classifications: {}, productSearches: {}, lines: [], packaging: null, rateRequest: null, rates: [], quote: null, selection: null, selectedRate: null, payment: null, purchaseIntent: null, externalReference: null, purchaseState: 'idle', resultView: null };
 
 function populateReceiverStates(selected='') { const country=DEMO_COUNTRIES.find((entry)=>entry.code===$('#receiver-country').value); const stateSelect=$('#receiver-state'); stateSelect.innerHTML=`<option value="">Select state</option>${(country?.states??[]).map((entry)=>`<option value="${entry.code}">${html(entry.name)}</option>`).join('')}`; stateSelect.disabled=!country?.states?.length; stateSelect.value=selected; }
 function populateReceiverCountries() { const country=$('#receiver-country'); country.innerHTML=`<option value="">Select country</option>${DEMO_COUNTRIES.map((entry)=>`<option value="${entry.code}">${html(entry.name)}</option>`).join('')}`; country.value='US'; populateReceiverStates('MA'); }
@@ -32,7 +33,7 @@ function resetSession() {
   state.client = null; state.cart = {}; state.classifications = {}; state.productSearches = {}; state.lines = [];
   state.packaging = null; state.rateRequest = null; state.rates = []; state.quote = null; state.selection = null;
   state.selectedRate = null; state.payment = null; state.purchaseIntent = null; state.externalReference = null; state.purchaseState = 'idle';
-  state.documentUrls.forEach((url) => URL.revokeObjectURL(url)); state.documentUrls = [];
+  state.resultView?.dispose(); state.resultView = null;
   $('#encoded-key').value = ''; $('#login-status').textContent = ''; $('#login-status').className = 'message';
   $('#address-form').reset(); $('#cart-count').textContent = '0'; $('#authenticated-actions').hidden = true;
   $('#store-view').hidden = true; $('#login-view').hidden = false; error(); renderCatalog(); updateCheckoutState(); $('#encoded-key').focus();
@@ -176,7 +177,7 @@ async function purchaseAutomatic({outcome,button,status}) {
     // the shipping portion, so the SDK confirmation binds that same host payment
     // reference to the immutable shipping intent and its selected delivery amount.
     const response = await Shipping.purchaseAfterPayment(state.client, state.purchaseIntent, { confirmed: true, reference: state.payment.id, confirmedAt: new Date().toISOString(), intentId: state.purchaseIntent.id, amount: state.purchaseIntent.amount, currency: state.purchaseIntent.currency });
-    state.purchaseState = 'purchased'; renderResult(response.data); show('result-section');
+    state.purchaseState = 'purchased'; show('result-section'); renderResult(response.data);
   } catch (cause) {
     if (state.purchaseState === 'submitting') state.purchaseState = isDefinitivePurchaseFailure(cause) ? 'failed' : 'uncertain';
     const reconciliation = state.purchaseState === 'uncertain' ? ` The result is uncertain. Reconcile external reference ${state.externalReference} before retrying.` : '';
@@ -191,27 +192,10 @@ function isDefinitivePurchaseFailure(cause) {
   if (cause.category === 'validation') return true;
   return [400, 401, 403, 404, 422, 424].includes(cause.status);
 }
-function safeUrl(value) { try { const url = new URL(value); return url.protocol === 'https:' ? url.href : null; } catch { return null; } }
-const MAX_BASE64_DOCUMENT_BYTES = 10 * 1024 * 1024;
-function base64Url(value) {
-  if (typeof value !== 'string' || !value || !/^[A-Za-z0-9+/]*={0,2}$/.test(value) || value.length % 4 !== 0) return { error: 'Malformed Base64 document' };
-  if (value.length > Math.ceil(MAX_BASE64_DOCUMENT_BYTES / 3) * 4) return { error: 'Base64 document exceeds the 10 MB browser download limit' };
-  try { const decoded = atob(value); if (decoded.length > MAX_BASE64_DOCUMENT_BYTES) return { error: 'Base64 document exceeds the 10 MB browser download limit' }; const bytes = Uint8Array.from(decoded, (character) => character.charCodeAt(0)); const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' })); state.documentUrls.push(url); return { url }; } catch { return { error: 'Malformed Base64 document' }; }
-}
-function documentCard(label, value, isUrl, required = false, notRequested = false) {
-  if (notRequested) return `<div class="document-card unavailable"><span>—</span><strong>${label}</strong><small>Not requested</small></div>`;
-  const href = isUrl === 1 ? safeUrl(value) : null;
-  if (href) return `<a class="document-card" href="${href}" target="_blank" rel="noopener noreferrer"><span>PDF</span><strong>${label}</strong><small>Open document ↗</small></a>`;
-  const decoded = isUrl === 0 && typeof value === 'string' && value ? base64Url(value) : null;
-  if (decoded?.url) return `<a class="document-card" href="${decoded.url}" download="${label.toLowerCase().replaceAll(' ', '-')}.pdf"><span>PDF</span><strong>${label}</strong><small>Download Base64 document</small></a>`;
-  if (decoded?.error) return `<div class="document-card unavailable"><span>!</span><strong>${label}</strong><small>${decoded.error}</small></div>`;
-  return `<div class="document-card unavailable"><span>—</span><strong>${label}</strong><small>${required ? 'Required document unavailable' : 'Not returned'}</small></div>`;
-}
 function renderResult(result) {
-  state.documentUrls.forEach((url) => URL.revokeObjectURL(url)); state.documentUrls = [];
-  const tracking = safeUrl(result.tracking_url);
   const totals=cartTotals(state.lines); const delivery=state.selection.shippingCost; const insurance=state.rateRequest?.is_insured==='1'?Number(state.selectedRate.charges.insurance_cost??0):0;
-  $('#shipment-result').innerHTML = `<div class="tracking-card"><div><small>REFERENCE</small><strong>${html(result.reference)}</strong></div><div><small>TRACKING NUMBER</small><strong>${html(result.tracking_number)}</strong></div>${tracking ? `<a class="primary button-link" href="${html(tracking)}" target="_blank" rel="noopener noreferrer">Track shipment</a>` : ''}</div><div class="panel payment-record" role="status"><div class="payment-record-head"><div><small>PAYDEMO FULL ORDER + DELIVERY</small><h3>Payment recorded</h3></div><span class="payment-status-badge">Paid</span></div><strong class="payment-record-total">${html(money(state.payment.amount,state.payment.currency))}</strong><dl><div><dt>Reference</dt><dd>${html(state.payment.id)}</dd></div><div><dt>Merchandise</dt><dd>${html(money(totals.subtotal,state.payment.currency))}</dd></div><div><dt>Delivery</dt><dd>${html(money(delivery,state.payment.currency))}</dd></div><div><dt>Insurance</dt><dd>${state.rateRequest?.is_insured==='1'?html(money(insurance,state.payment.currency)):'Not requested'}</dd></div><div><dt>Carrier</dt><dd>${html(state.selectedRate.name)}</dd></div><div><dt>Confirmed</dt><dd>${html(state.payment.confirmedAt??'Confirmed by PayDemo')}</dd></div></dl></div><h3>Shipment documents</h3><div class="documents">${documentCard('Waybill', result.documents.waybill_doc, result.waybill_is_url)}${documentCard('Commercial invoice', result.documents.invoice_doc, result.invoice_is_url, true)}${documentCard('Insurance certificate', result.documents.insurance_doc, result.insurance_is_url, state.rateRequest?.is_insured === '1', state.rateRequest?.is_insured !== '1')}</div>`;
+  state.resultView?.dispose();
+  state.resultView=mountSharedShipmentResult($('#result-section'),{shipment:{reference:result.reference,trackingNumber:result.tracking_number,trackingUrl:result.tracking_url},payment:{id:state.payment.id,amount:state.payment.amount,currency:state.payment.currency,merchandise:totals.subtotal,delivery,insurance,insured:state.rateRequest?.is_insured==='1',carrier:state.selectedRate.name,confirmedAt:state.payment.confirmedAt},documents:{waybill:{label:'Waybill',value:result.documents.waybill_doc,isUrl:result.waybill_is_url},invoice:{label:'Commercial invoice',value:result.documents.invoice_doc,isUrl:result.invoice_is_url,required:true},insurance:{label:'Insurance certificate',value:result.documents.insurance_doc,isUrl:result.insurance_is_url,required:state.rateRequest?.is_insured==='1',notRequested:state.rateRequest?.is_insured!=='1'}}});
 }
 
 renderCatalog();

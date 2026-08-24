@@ -1,0 +1,12 @@
+@import "tailwindcss" source(none);
+@import "./styles.css";
+@source "../index.html";
+@source "../manual.html";
+@source "./**/*.js";
+
+@theme {
+  --color-africanies-ink: #17243a;
+  --color-africanies-accent: #18bd63;
+  --color-africanies-page: #f6f8f7;
+  --color-africanies-border: #dce4df;
+}

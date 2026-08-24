@@ -1,7 +1,7 @@
 import type { AfricaniesClient } from '../client.js';
 import type { ShipmentPurchaseRequest, ShipmentPurchaseResult } from '../types.js';
 import { PurchaseController } from '../ui/controllers.js';
-import { AfricaniesElement, escapeHtml, safeExternalUrl, sharedStyles, testModeMarkup } from './base.js';
+import { AfricaniesElement, escapeHtml, safeExternalUrl, testModeMarkup } from './base.js';
 
 function renderDocument(label: string, value: string | null, isUrl: number, required = false): string {
   if (typeof value === 'string' && value !== '') {
@@ -48,18 +48,7 @@ export class AfricaniesPurchaseConfirmationElement extends AfricaniesElement {
   protected render(): void {
     const state = this.#controller?.state;
     const result = state?.response?.data;
-    this.root.innerHTML = `<style>${sharedStyles}
-      .success { background:white; border:0; padding:clamp(28px,6vw,72px); text-align:center; }
-      .success-icon { align-items:center; background:var(--africanies-success-bg); border-radius:999px; color:#0a9b4d; display:flex; font-size:32px; height:72px; justify-content:center; margin:0 auto 18px; width:72px; }
-      .reference { font-size:1.3rem; font-weight:850; overflow-wrap:anywhere; }
-      .documents { background:white; border:1px solid var(--africanies-border); border-radius:14px; margin-top:20px; overflow:hidden; }
-      .document-tabs { display:flex; overflow:auto; }
-      .document-tabs button { background:white; border-bottom:2px solid var(--africanies-border); border-radius:0; color:var(--africanies-muted); flex:1; white-space:nowrap; }
-      .document-tabs button[aria-selected="true"] { border-color:var(--africanies-mode); color:#087b3c; }
-      .document-panel { min-height:260px; padding:20px; }
-      .document-panel iframe { border:1px solid var(--africanies-border); border-radius:10px; height:480px; width:100%; }
-      .document-unavailable { display:grid; gap:6px; }
-    </style><section class="shell"><div class="topline"><div><h2>${result ? 'Thank you for your purchase!' : 'Purchase shipment'}</h2><p class="muted">${result ? 'Your shipment has been successfully processed.' : 'Review and confirm your shipment purchase'}</p></div>${testModeMarkup(this.environment)}</div>
+    this.root.innerHTML = `${this.sharedStyleTag()}<section class="shell"><div class="topline"><div><h2>${result ? 'Thank you for your purchase!' : 'Purchase shipment'}</h2><p class="muted">${result ? 'Your shipment has been successfully processed.' : 'Review and confirm your shipment purchase'}</p></div>${testModeMarkup(this.environment)}</div>
       ${!this.#client || !this.#request ? '<div class="alert info">Set both <code>client</code> and <code>request</code> properties to purchase.</div>' : ''}
       ${state?.issues.length ? `<div class="alert error" role="alert"><strong>Purchase request needs attention</strong><ul>${state.issues.map((issue) => `<li>${escapeHtml(issue.path)}: ${escapeHtml(issue.message)}</li>`).join('')}</ul></div>` : ''}
       ${state?.status === 'error' ? this.renderApiError(state.error) : ''}

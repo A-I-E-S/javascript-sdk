@@ -35,6 +35,22 @@ test('automatic and manual checkout use one shared rates and PayDemo renderer', 
   assert.match(shared,/active\?'Selected':'Select'/); assert.match(shared,/Selected shipping rate/);
 });
 
+test('automatic and manual checkout use one complete secure shipment-result renderer',async()=>{
+  const [automatic,manual,shared]=await Promise.all([source('src/main.js'),source('src/manual.js'),source('src/shared-shipment-result.js')]);
+  for(const entry of [automatic,manual])assert.match(entry,/mountSharedShipmentResult/);
+  assert.match(shared,/class="shared-shipment-result"/);assert.match(shared,/MAX_BASE64_DOCUMENT_BYTES = 10 \* 1024 \* 1024/);
+  assert.match(shared,/url\.protocol === 'https:'/);assert.match(shared,/URL\.revokeObjectURL/);assert.match(shared,/Not requested/);
+  assert.match(shared,/Malformed Base64 document/);assert.match(shared,/Required document unavailable/);
+  assert.doesNotMatch(manual,/Not returned as HTTPS URL/);
+});
+
+test('both routes use one build-time Tailwind entry without runtime CDN dependencies',async()=>{
+  const [automatic,manual,css,config]=await Promise.all([source('src/main.js'),source('src/manual.js'),source('src/tailwind.css'),source('vite.config.js')]);
+  assert.match(automatic,/import '\.\/tailwind\.css'/);assert.match(manual,/import '\.\/tailwind\.css'/);
+  assert.match(css,/@import "tailwindcss" source\(none\)/);assert.match(css,/@source/);assert.match(config,/tailwindcss\(\)/);
+  assert.doesNotMatch(`${automatic}\n${manual}\n${css}`,/cdn\.tailwindcss\.com|https:\/\/fonts\./);
+});
+
 test('automatic delivery uses dependent country and state selects', async () => {
   const [page,main]=await Promise.all([source('index.html'),source('src/main.js')]);
   assert.match(page,/id="receiver-country"[^>]*name="country"/); assert.match(page,/id="receiver-state"[^>]*name="state"/);
@@ -69,9 +85,9 @@ test('manual lab restores useful historical defaults without a hardcoded HS code
 });
 
 test('payment results use structured, accessible payment records', async () => {
-  const [main, manual, styles] = await Promise.all([source('src/main.js'), source('src/manual.js'), source('src/styles.css')]);
-  assert.match(main, /payment-status-badge/); assert.match(main, /Merchandise/); assert.match(main, /Carrier/);
-  assert.match(manual, /payment-record-head/); assert.match(styles, /payment-record-total/);
+  const [main, manual, shared, styles] = await Promise.all([source('src/main.js'), source('src/manual.js'), source('src/shared-shipment-result.js'), source('src/styles.css')]);
+  assert.match(main, /mountSharedShipmentResult/); assert.match(manual, /mountSharedShipmentResult/);
+  assert.match(shared, /payment-status-badge/); assert.match(shared, /Merchandise/); assert.match(shared, /Carrier/); assert.match(styles, /payment-record-total/);
 });
 
 test('manual purchase distinguishes definitive validation failures from uncertain delivery', async () => {

@@ -1,6 +1,7 @@
 import type { AfricaniesEnvironment, ShipmentMode } from '../types.js';
+import elementTailwindStyles from './tailwind.css?inline';
 
-export const sharedStyles = `
+export const sharedStyles = `${elementTailwindStyles}
   :host {
     --africanies-primary: #1c2b3f;
     --africanies-accent: #1cbd5d;
@@ -64,6 +65,15 @@ export const sharedStyles = `
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; } }
 `;
 
+let sharedSheet: CSSStyleSheet | undefined;
+
+function adoptSharedStyles(root: ShadowRoot): boolean {
+  if (typeof CSSStyleSheet === 'undefined' || !('replaceSync' in CSSStyleSheet.prototype) || !('adoptedStyleSheets' in root)) return false;
+  sharedSheet ??= (() => { const sheet = new CSSStyleSheet(); sheet.replaceSync(sharedStyles); return sheet; })();
+  root.adoptedStyleSheets = [...root.adoptedStyleSheets, sharedSheet];
+  return true;
+}
+
 export function escapeHtml(value: unknown): string {
   return String(value ?? '')
     .replaceAll('&', '&amp;')
@@ -92,12 +102,14 @@ export function safeExternalUrl(value: unknown): string | undefined {
 export abstract class AfricaniesElement extends HTMLElement {
   static observedAttributes = ['environment', 'shipment-mode'];
   protected readonly root: ShadowRoot;
+  readonly #usesAdoptedStyles: boolean;
   #projectedEnvironment: AfricaniesEnvironment | undefined;
   #projectedShipmentMode: ShipmentMode | undefined;
 
   constructor() {
     super();
     this.root = this.attachShadow({ mode: 'open' });
+    this.#usesAdoptedStyles = adoptSharedStyles(this.root);
   }
 
   get environment(): AfricaniesEnvironment {
@@ -153,6 +165,9 @@ export abstract class AfricaniesElement extends HTMLElement {
   protected emit<T>(name: string, detail: T): void {
     this.dispatchEvent(new CustomEvent(name, { detail, bubbles: true, composed: true }));
   }
+
+  /** Fallback for browsers without constructable stylesheets. */
+  protected sharedStyleTag(): string { return this.#usesAdoptedStyles ? '' : `<style data-africanies-styles>${sharedStyles}</style>`; }
 
   protected abstract render(): void;
 }

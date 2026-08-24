@@ -33,6 +33,12 @@ The package also ships a classic-script build for CDNs and direct hosting:
 
 The global build registers the custom elements and exposes the same client and UI exports on `globalThis.AfricaniesShipping`. Supply credentials at runtime; never compile a secret into a public script.
 
+## Styling and CSP
+
+Tailwind CSS is a build-time development dependency only. The elements bundle contains one compiled stylesheet, shared through constructable stylesheets where supported and inserted as a Shadow DOM `<style>` fallback elsewhere. Applications do not need Tailwind, a Tailwind configuration, or a global CSS import. CSS custom properties such as `--africanies-accent` remain the public theming seam.
+
+The demo emits hashed external CSS and requires no CSS CDN, remote font, `eval`, or runtime scanner. The constructable stylesheet path also performs no network or dynamic code evaluation. Applications using the fallback `<style>` path must allow package-owned inline element styles in their `style-src` policy; the SDK does not claim nonce propagation for that fallback.
+
 ## Shipment Builder
 
 ```ts

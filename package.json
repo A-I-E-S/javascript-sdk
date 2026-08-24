@@ -52,7 +52,7 @@
   "scripts": {
     "clean": "node ./scripts/clean.mjs",
     "check": "tsc --noEmit",
-    "build": "npm run clean && vite build && vite build --config vite.config.cdn.ts && tsc -p tsconfig.build.json",
+    "build": "npm run clean && vite build && vite build --config vite.config.elements.ts && vite build --config vite.config.cdn.ts && tsc -p tsconfig.build.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -72,9 +72,11 @@
   ],
   "devDependencies": {
     "@playwright/test": "^1.62.1",
+    "@tailwindcss/vite": "4.3.3",
     "@types/node": "^26.2.0",
     "@vitest/coverage-v8": "^4.1.11",
     "jsdom": "^30.0.1",
+    "tailwindcss": "4.3.3",
     "typescript": "^7.0.2",
     "vite": "^8.2.1",
     "vitest": "^4.1.11"

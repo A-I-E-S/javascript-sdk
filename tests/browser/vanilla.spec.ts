@@ -119,6 +119,7 @@ test('oversized Base64 document is rejected before browser decoding', async ({ p
 
 test('quantity two remains two physical units with exact unit weight and gross packaging semantics', async ({ page }) => {
   const fixture = await mockApi(page); await login(page); await reachPaymentWithQuantity(page, '2'); await page.locator('#pay-button').click();
+  await expect(page.locator('#result-section')).toBeVisible(); expect(fixture.purchase).toBeDefined();
   const boxes = fixture.purchase?.boxes as Array<{ weight: number; items: Array<{ weight: number; quantity: number }> }>;
   const items = boxes.flatMap((box) => box.items);
   expect(items.reduce((total, item) => total + item.quantity, 0)).toBe(2);

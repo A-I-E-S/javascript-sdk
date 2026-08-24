@@ -118,9 +118,11 @@ test('uninsured SFN checkout preserves unit weight, selected rate, payment, trac
   await expect(paymentRecord.locator('.payment-record-total')).toContainText('30,500'); await expect(paymentRecord).toContainText(/PAYDEMO-/);
   await expect(paymentRecord.locator('dl div').filter({ hasText: 'Merchandise' })).toContainText('18,500');
   await expect(paymentRecord.locator('dl div').filter({ hasText: 'Delivery' })).toContainText('12,000');
+  await expect(paymentRecord.locator('dl div').filter({ hasText: 'Insurance' })).toContainText('Not requested');
   await expect(paymentRecord.locator('dl div').filter({ hasText: 'Carrier' })).toContainText(rate.name); await expect(paymentRecord.locator('dl div').filter({ hasText: 'Confirmed' })).toContainText('Confirmed by PayDemo');
   await expect(page.getByRole('link', { name: /Track shipment/ })).toHaveAttribute('href', /^https:/);
-  await expect(page.locator('#shipment-result').getByText('Not requested')).toBeVisible(); expect(fixture.purchaseCount).toBe(1);
+  const insuranceDocument = page.locator('#shipment-result .document-card').filter({ hasText: 'Insurance certificate' });
+  await expect(insuranceDocument.getByText('Not requested', { exact: true })).toBeVisible(); expect(fixture.purchaseCount).toBe(1);
   expect(fixture.purchase).toMatchObject({ file_is_url: 1, is_insured: '0', shipment_method_slug: rate.slug, currency: 'NGN' });
   const address = fixture.purchase?.address as { sender: { country: string }; receiver: { country: string } };
   expect(address.sender.country).toBe('NG'); expect(address.receiver.country).toBe('US');

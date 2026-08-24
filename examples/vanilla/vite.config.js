@@ -20,6 +20,8 @@ export default defineConfig({
       input: {
         automatic: fileURLToPath(new URL('./index.html', import.meta.url)),
         manual: fileURLToPath(new URL('./manual.html', import.meta.url)),
+        showcase: fileURLToPath(new URL('./showcase.html', import.meta.url)),
+        elementsCheckout: fileURLToPath(new URL('./elements-checkout.html', import.meta.url)),
       },
     },
   },

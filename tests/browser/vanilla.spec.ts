@@ -395,14 +395,37 @@ test('built Pages artifact loads and navigates both demo routes without asset or
   await page.goto('http://127.0.0.1:4175/', { waitUntil: 'networkidle' });
   await expect(page).toHaveTitle(/Africanies Store/); await expect(page.locator('.test-badge')).toContainText('SANDBOX · SFN');
   await expect(page.locator('link[rel="stylesheet"]')).toHaveCount(1);await expect(page.locator('link[rel="stylesheet"]')).toHaveAttribute('href',/\/assets\/.*\.css$/);
-  await expect(page.locator('#encoded-key')).toBeVisible(); await page.getByRole('link', { name: 'Manual packaging lab' }).click();
+  await expect(page.locator('#encoded-key')).toBeVisible(); await page.getByRole('link', { name: 'Manual', exact: true }).click();
   await expect(page).toHaveURL(/manual\.html$/); await expect(page.locator('#manual-key')).toBeVisible(); await expect(page).toHaveTitle(/Manual Packaging Lab/);
   await page.locator('#manual-key').fill(credential); await page.getByRole('button', { name: 'Validate and open lab' }).click();
   const builtBuilder = page.locator('africanies-shipment-builder');
   await expect(builtBuilder.getByRole('heading', { name: 'Create shipment' })).toBeVisible(); await expect(builtBuilder.getByRole('button', { name: 'Continue' })).toBeVisible();
   expect(await builtBuilder.evaluate((element) => element.constructor === customElements.get('africanies-shipment-builder') && element.shadowRoot !== null && (element.shadowRoot.adoptedStyleSheets.length>0||Boolean(element.shadowRoot.querySelector('style')?.textContent?.includes('--africanies-accent'))))).toBe(true);
-  await page.getByRole('link', { name: 'Automatic checkout' }).click(); await expect(page.locator('#encoded-key')).toBeVisible();
+  await page.getByRole('link', { name: 'Automatic', exact: true }).click(); await expect(page.locator('#encoded-key')).toBeVisible();
+  await page.getByRole('link',{name:'Showcase',exact:true}).click();await expect(page).toHaveURL(/showcase\.html$/);await expect(page.locator('#preview-builder').getByRole('heading',{name:'Create shipment'})).toBeVisible();
+  await page.getByRole('link',{name:'Elements checkout',exact:true}).click();await expect(page).toHaveURL(/elements-checkout\.html$/);await expect(page.locator('#elements-key')).toBeVisible();
   expect(failures).toEqual([]); expect(consoleErrors).toEqual([]);
+});
+
+test('credential-free showcase renders all three real SDK elements without API traffic',async({page},testInfo)=>{
+  test.skip(testInfo.project.name!=='chromium','One engine proves the shared credential-free showcase; responsive coverage runs separately.');
+  const apiRequests:string[]=[];page.on('request',(request)=>{if(request.url().includes('api-sandbox.africaniestest.com'))apiRequests.push(request.url());});
+  await page.goto('http://127.0.0.1:4174/showcase.html',{waitUntil:'networkidle'});
+  await expect(page.getByRole('heading',{name:'See the SDK before connecting an API key.'})).toBeVisible();
+  await expect(page.locator('#preview-builder').getByRole('heading',{name:'Create shipment'})).toBeVisible();
+  await expect(page.locator('#preview-rates').getByRole('heading',{name:'Shipment carrier'})).toBeVisible();
+  await expect(page.locator('#preview-rates').getByText('Africanies Air Express')).toBeVisible();
+  await expect(page.locator('#preview-purchase').getByRole('heading',{name:'Purchase shipment'})).toBeVisible();
+  expect(apiRequests).toEqual([]);
+});
+
+test('composed elements checkout gates purchase UI behind explicit PayDemo success',async({page},testInfo)=>{
+  test.skip(testInfo.project.name!=='chromium','One engine proves the composed element contract; individual elements retain their cross-browser matrix.');
+  const fixture=await mockApi(page);await page.goto('http://127.0.0.1:4174/elements-checkout.html');await page.locator('#elements-key').fill(credential);await page.getByRole('button',{name:'Validate and start'}).click();
+  const builder=page.locator('#elements-builder');for(let step=0;step<3;step+=1)await builder.getByRole('button',{name:'Continue'}).click();await builder.getByRole('button',{name:'Create shipment & review rates'}).click();
+  const rates=page.locator('#elements-rates');await expect(rates.getByText('Africanies Air Express')).toBeVisible();await rates.getByRole('button',{name:'Select',exact:true}).click();await rates.getByRole('button',{name:'Continue'}).click();
+  await page.locator('#elements-outcome').selectOption('failed');await page.locator('#elements-pay').click();await expect(page.locator('#elements-payment-status')).toContainText('No purchase element was mounted');await expect(page.locator('#elements-purchase')).toHaveCount(0);
+  await page.locator('#elements-outcome').selectOption('success');await page.locator('#elements-pay').click();const purchase=page.locator('#elements-purchase');await expect(purchase.getByRole('heading',{name:'Purchase shipment'})).toBeVisible();expect(fixture.purchaseCount).toBe(0);await purchase.getByRole('button',{name:'Purchase shipment'}).click();await expect(purchase.getByText('TRACK-UAT-1')).toBeVisible();expect(fixture.purchaseCount).toBe(1);
 });
 
 test('mobile checkout remains usable without horizontal overflow and reports progress semantically', async ({ page }, testInfo) => {

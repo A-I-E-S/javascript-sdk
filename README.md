@@ -2,6 +2,8 @@
 
 Official TypeScript/JavaScript client and framework-neutral UI for AfricanIES shipping integrations.
 
+> **New integrator? [Start Here](./docs/index.md).** Choose automatic packaging, host-controlled manual packaging, headless Node, SDK standalone UI, or a fully custom browser checkout.
+
 > **Release status:** `@africanies/shipping@0.4.0` is published on npm. This documentation-only source update prepares `0.4.1`; publishing it remains a separate, authorized release step.
 
 ## Live UAT Demo
@@ -29,7 +31,8 @@ const client = createAfricaniesClient({
   auth: { encodedKey: 'BASE64_PUBLIC_KEY_COLON_PRIVATE_KEY' },
 });
 
-const rates = await client.shipments.getRates(rateRequest);
+// Continue with the complete runnable example:
+// examples/headless-node/automatic-checkout.mjs
 ```
 
 `test` is the default environment and uses `https://api-sandbox.africaniestest.com`. `live` uses `https://api.africanies.com` and must be selected explicitly.
@@ -58,7 +61,7 @@ Runtime Base64 credentials remain the selected integration model for the current
 
 The browser UI is compiled with the exact Tailwind CSS v4 build toolchain during SDK development. Consumers do not install Tailwind or import a stylesheet: element styles are embedded in the browser/element bundles and isolated inside each Shadow Root. Headless, server, and controller-only entry points remain DOM- and CSS-free.
 
-Detailed guides are under [`docs/`](./docs/), including [getting started](./docs/getting-started.md), [checkout packaging](./docs/checkout-packaging.md), and the [UI guide](./docs/ui.md). The canonical [live automatic UAT demo](https://a-i-e-s.github.io/javascript-sdk/) and [manual packaging lab](https://a-i-e-s.github.io/javascript-sdk/manual.html) exercise the published browser integration without embedding credentials.
+Use [Start Here](./docs/index.md) as the documentation index. It links [getting started](./docs/getting-started.md), [checkout packaging](./docs/checkout-packaging.md), the [UI guide](./docs/ui.md), and the [API-to-example matrix](./docs/api-reference.md). The canonical [live automatic UAT demo](https://a-i-e-s.github.io/javascript-sdk/) and [manual packaging lab](https://a-i-e-s.github.io/javascript-sdk/manual.html) exercise the published browser integration without embedding credentials.
 
 Version `0.2.0` introduced shipment wire-type corrections based on observed rate and purchase payloads. It contains breaking TypeScript and rate-to-purchase adapter changes; see [the migration guide](./docs/migrating-to-0.2.md) and [changelog](./CHANGELOG.md).
 

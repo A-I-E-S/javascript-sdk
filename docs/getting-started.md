@@ -1,5 +1,7 @@
 # Getting started
 
+For a path-based introduction and runnable applications, begin at [Start Here](./index.md).
+
 Before installing, you can exercise the browser workflow in the canonical sandbox-only [automatic UAT demo](https://a-i-e-s.github.io/javascript-sdk/). The [manual packaging lab](https://a-i-e-s.github.io/javascript-sdk/manual.html) demonstrates the alternative host-controlled box flow. Supply your own sandbox Base64 credential at runtime; neither page embeds or stores credentials.
 
 ## Create a client
@@ -48,6 +50,8 @@ The public API documentation and owner-confirmed sandbox behavior still differ i
 
 ## Resource methods
 
+The complete executable resource inventory is in [`examples/headless-node/resources.mjs`](../examples/headless-node/resources.mjs). The abbreviated calls below assume the named request values have been created from the corresponding exported TypeScript types.
+
 ```ts
 await client.addresses.verify(address);
 await client.files.generateUploadUrls({ files });
@@ -69,6 +73,8 @@ await client.warehouses.listByCountry('NG');
 Omitting an optional product/carrier/warehouse selector returns a Laravel simple paginator. A supplied selector must be a positive integer or the exact string `all`.
 
 ## Signed uploads
+
+In this example, `file` is a browser `Blob` or `File`, and `client` is the authenticated client created above.
 
 ```ts
 const uploaded = await client.files.upload(file, {

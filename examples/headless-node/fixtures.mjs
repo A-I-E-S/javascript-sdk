@@ -1,0 +1,4 @@
+export const address=(type)=>({first_name:type==='sender'?'Ada':'Grace',last_name:'Lovelace',email:`${type}@example.com`,phone:'1234567890',country:type==='sender'?'NG':'US',state:type==='sender'?'LA':'MA',city:type==='sender'?'Lagos':'Boston',address:'1 Example Street',address_in_detail:'1 Example Street',address_landmark:'Example',zip_code:type==='sender'?'100001':'02125',type,longitude:null,latitude:null,google_address:'0'});
+export const addresses={sender:address('sender'),receiver:address('receiver')};
+export const rate={name:'Demo Air',slug:'demo-air-sfn',mode:'SFN',total_amount:5000,discount_amount:0,payment_amount:5000,total_item_value:2500,charges:{shipment_cost:5000,insurance_cost:0,pickup_cost:0,last_mile_delivery_cost:0,vat:0},others:{min_day:'2',max_day:'4',currency:'NGN'}};
+export const envelope=(data)=>({success:true,status_code:200,message:'ok',data});

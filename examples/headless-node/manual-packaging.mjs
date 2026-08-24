@@ -1,0 +1,2 @@
+import{calculatePackaging}from'../../dist/index.js';
+const boxes=[{index:1,length:30,width:20,height:15,weight:2.7,items:[{name:'Handbags',description:'Leather handbag',product_hs_code:'4202210000',weight:1.2,unit_price:1250,country:'NG',quantity:2,amount:2500}]}];const result=calculatePackaging([],{mode:'manual',boxes});if(!result.valid)throw new Error(JSON.stringify(result.issues));console.log(JSON.stringify(result.totals));

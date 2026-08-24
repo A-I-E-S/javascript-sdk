@@ -89,6 +89,9 @@ export function shippingAmount(rate) {
   return amount;
 }
 
-export function payDemoResult(outcome = 'success') {
-  return { id: `PAYDEMO-${Date.now()}`, status: outcome, confirmed: outcome === 'success' };
+export function payDemoResult(outcome = 'success', payment = {}) {
+  return {
+    id: `PAYDEMO-${Date.now()}`, status: outcome, confirmed: outcome === 'success',
+    amount: Number(payment.amount ?? 0), currency: payment.currency ?? 'NGN',
+  };
 }

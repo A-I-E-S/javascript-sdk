@@ -82,7 +82,8 @@ export function testModeMarkup(environment: AfricaniesEnvironment): string {
 export function safeExternalUrl(value: unknown): string | undefined {
   try {
     const url = new URL(String(value));
-    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : undefined;
+    const localHttp = url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    return url.protocol === 'https:' || localHttp ? url.href : undefined;
   } catch {
     return undefined;
   }

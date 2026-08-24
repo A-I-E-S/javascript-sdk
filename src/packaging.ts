@@ -79,19 +79,33 @@ const orientations = (d: Dimensions, rotate: boolean): Dimensions[] => {
 function summarizeManual(boxes: readonly RateBox[]): PackagingResult {
   const copied = structuredClone(boxes) as RateBox[];
   const issues: PackagingIssue[] = [];
+  const indexes = new Set<number>();
+  if (!copied.length) issues.push({ path: 'boxes', message: 'Add at least one box.' });
   copied.forEach((box, index) => {
     if (![box.length, box.width, box.height, box.weight].every(positive)) issues.push({ path: `boxes.${index}`, message: 'Box dimensions and weight must be positive finite numbers.' });
-    if (!box.items.length) issues.push({ path: `boxes.${index}.items`, message: 'Add at least one item.' });
+    if (!Number.isInteger(box.index) || box.index < 0 || indexes.has(box.index)) issues.push({ path: `boxes.${index}.index`, message: 'Box index must be a unique non-negative integer.' });
+    indexes.add(box.index);
+    if (!Array.isArray(box.items) || !box.items.length) issues.push({ path: `boxes.${index}.items`, message: 'Add at least one item.' });
+    (Array.isArray(box.items) ? box.items : []).forEach((item, itemIndex) => {
+      const itemPath = `boxes.${index}.items.${itemIndex}`;
+      if (![item.name, item.description, item.product_hs_code, item.country].every((value) => typeof value === 'string' && value.trim())) issues.push({ path: itemPath, message: 'Item name, description, HS code, and country are required.' });
+      if (!positive(item.weight)) issues.push({ path: `${itemPath}.weight`, message: 'Item weight is unit weight and must be greater than zero.' });
+      if (!Number.isInteger(item.quantity) || item.quantity <= 0) issues.push({ path: `${itemPath}.quantity`, message: 'Quantity must be a positive whole number.' });
+      if (!Number.isFinite(item.unit_price) || item.unit_price < 0 || !Number.isFinite(item.amount) || item.amount < 0) issues.push({ path: itemPath, message: 'Unit price and amount must be finite non-negative numbers.' });
+    });
+    const derived = box.items.reduce((sum, item) => sum + item.weight * item.quantity, 0);
+    if (Number.isFinite(derived) && box.weight + 1e-9 < derived) issues.push({ path: `boxes.${index}.weight`, message: `Box weight cannot be less than quantity × unit weight totals (${derived}).` });
   });
   const contentsWeight = copied.reduce((sum, box) => sum + box.items.reduce((itemSum, item) => itemSum + item.weight * item.quantity, 0), 0);
   const packed = copied.map((rateBox, index): PackedBox => ({
     index: rateBox.index, dimensions: { length: rateBox.length, width: rateBox.width, height: rateBox.height },
-    contentsWeight: rateBox.weight, emptyWeight: 0, totalWeight: rateBox.weight,
+    contentsWeight: rateBox.items.reduce((sum, item) => sum + item.weight * item.quantity, 0),
+    emptyWeight: Math.max(0, rateBox.weight - rateBox.items.reduce((sum, item) => sum + item.weight * item.quantity, 0)), totalWeight: rateBox.weight,
     usedAdjustedVolume: volume(rateBox), availableVolume: volume(rateBox), utilization: 1,
     items: [], rateBox,
   }));
   return { mode: 'manual', valid: issues.length === 0, boxes: packed, rateBoxes: copied, unpackedItems: [], issues,
-    totals: { boxCount: copied.length, itemUnitCount: copied.reduce((n, b) => n + b.items.reduce((m, i) => m + i.quantity, 0), 0), contentsWeight, packagingWeight: 0, totalWeight: copied.reduce((n, b) => n + b.weight, 0), adjustedVolume: copied.reduce((n, b) => n + volume(b), 0) } };
+    totals: { boxCount: copied.length, itemUnitCount: copied.reduce((n, b) => n + b.items.reduce((m, i) => m + i.quantity, 0), 0), contentsWeight, packagingWeight: copied.reduce((sum, box) => sum + Math.max(0, box.weight - box.items.reduce((itemSum, item) => itemSum + item.weight * item.quantity, 0)), 0), totalWeight: copied.reduce((n, b) => n + b.weight, 0), adjustedVolume: copied.reduce((n, b) => n + volume(b), 0) } };
 }
 
 function place(unit: Unit, box: WorkingBox, maxWeight: number, rotate: boolean): boolean {
@@ -124,12 +138,18 @@ export function calculatePackaging(items: readonly PackagingCartItem[], config: 
   const ids = new Set<string>();
   const units: Unit[] = [];
   const limit = config.maxExpandedUnits ?? 10_000;
+  if (!Number.isInteger(limit) || limit <= 0) issues.push({ path: 'maxExpandedUnits', message: 'Expanded-item safety limit must be a positive integer.' });
+  if (!items.length) issues.push({ path: 'items', message: 'Add at least one cart item.' });
   items.forEach((item, itemIndex) => {
     const path = `items.${itemIndex}`;
-    const invalid = !item.id.trim() || ids.has(item.id) || !Number.isInteger(item.quantity) || item.quantity <= 0 || !positive(item.unitWeight) || !positive(item.unitPrice) || !Object.values(item.dimensions).every(positive);
+    const requiredText = [item.id, item.name, item.description, item.productHsCode, item.country];
+    const invalid = requiredText.some((value) => typeof value !== 'string' || !value.trim()) || ids.has(item.id) || !Number.isInteger(item.quantity) || item.quantity <= 0 || !positive(item.unitWeight) || !Number.isFinite(item.unitPrice) || item.unitPrice < 0 || !Object.values(item.dimensions).every(positive);
     if (ids.has(item.id)) issues.push({ path: `${path}.id`, message: 'Item IDs must be unique.' });
     ids.add(item.id);
-    if (invalid) { issues.push({ path, message: 'Item identity, quantity, unit weight, price, and dimensions must be valid positive values.' }); return; }
+    for (const [field, value] of [['id', item.id], ['name', item.name], ['description', item.description], ['productHsCode', item.productHsCode], ['country', item.country]] as const) {
+      if (typeof value !== 'string' || !value.trim()) issues.push({ path: `${path}.${field}`, message: 'This field is required.' });
+    }
+    if (invalid) { issues.push({ path, message: 'Item identity, required shipment fields, quantity, unit weight, price, and dimensions must be valid.' }); return; }
     if (units.length + item.quantity > limit) { issues.push({ path: `${path}.quantity`, message: `Expanded item count exceeds the safety limit of ${limit}.` }); return; }
     const adjusted = { length: item.dimensions.length + allowance.length, width: item.dimensions.width + allowance.width, height: item.dimensions.height + allowance.height };
     for (let ordinal = 1; ordinal <= item.quantity; ordinal += 1) units.push({ item: structuredClone(item), ordinal, adjusted, volume: volume(adjusted) });
@@ -139,10 +159,10 @@ export function calculatePackaging(items: readonly PackagingCartItem[], config: 
     const invalid = !box.id.trim() || catalogIds.has(box.id) || !Object.values(box.innerDimensions).every(positive) || (box.emptyWeight !== undefined && (!Number.isFinite(box.emptyWeight) || box.emptyWeight < 0)) || (box.maxGrossWeight !== undefined && !positive(box.maxGrossWeight));
     if (invalid) issues.push({ path: `boxCatalog.${index}`, message: 'Box IDs must be unique and box measurements must be valid.' });
     catalogIds.add(box.id); return !invalid;
-  }).sort((a, b) => volume(a.innerDimensions) - volume(b.innerDimensions) || a.id.localeCompare(b.id));
+  }).sort((a, b) => volume(a.innerDimensions) - volume(b.innerDimensions) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   if (!catalog.length) issues.push({ path: 'boxCatalog', message: 'Add at least one valid enabled box.' });
   if (issues.length) return { mode: 'automatic', valid: false, boxes: [], rateBoxes: [], unpackedItems, issues, totals: { boxCount: 0, itemUnitCount: units.length, contentsWeight: 0, packagingWeight: 0, totalWeight: 0, adjustedVolume: 0 } };
-  units.sort((a, b) => b.volume - a.volume || b.item.unitWeight - a.item.unitWeight || a.item.id.localeCompare(b.item.id) || a.ordinal - b.ordinal);
+  units.sort((a, b) => b.volume - a.volume || b.item.unitWeight - a.item.unitWeight || (a.item.id < b.item.id ? -1 : a.item.id > b.item.id ? 1 : 0) || a.ordinal - b.ordinal);
   const working: WorkingBox[] = [];
   for (const unit of units) {
     let fitted = working.some((box) => place(unit, box, Math.min(config.maxWeightPerBox, box.definition.maxGrossWeight ?? Infinity), config.allowRotation !== false));
@@ -152,7 +172,11 @@ export function calculatePackaging(items: readonly PackagingCartItem[], config: 
         if (place(unit, candidate, Math.min(config.maxWeightPerBox, definition.maxGrossWeight ?? Infinity), config.allowRotation !== false)) { working.push(candidate); fitted = true; break; }
       }
     }
-    if (!fitted) unpackedItems.push({ itemId: unit.item.id, unitOrdinal: unit.ordinal, reason: unit.item.unitWeight > config.maxWeightPerBox ? 'ITEM_TOO_HEAVY' : 'ITEM_TOO_LARGE', message: `Unit ${unit.ordinal} of ${unit.item.name} cannot fit any configured box safely.` });
+    if (!fitted) {
+      const dimensionCandidates = catalog.filter((definition) => orientations(unit.adjusted, config.allowRotation !== false).some((d) => d.length <= definition.innerDimensions.length && d.width <= definition.innerDimensions.width && d.height <= definition.innerDimensions.height));
+      const reason = dimensionCandidates.length > 0 && !dimensionCandidates.some((definition) => (definition.emptyWeight ?? 0) + unit.item.unitWeight <= Math.min(config.maxWeightPerBox, definition.maxGrossWeight ?? Infinity)) ? 'ITEM_TOO_HEAVY' : 'ITEM_TOO_LARGE';
+      unpackedItems.push({ itemId: unit.item.id, unitOrdinal: unit.ordinal, reason, message: `Unit ${unit.ordinal} of ${unit.item.name} cannot fit any configured box safely because of its ${reason === 'ITEM_TOO_HEAVY' ? 'weight' : 'dimensions'}.` });
+    }
   }
   const boxes = working.map((box): PackedBox => {
     const grouped = new Map<string, typeof box.units>();
@@ -161,7 +185,7 @@ export function calculatePackaging(items: readonly PackagingCartItem[], config: 
     const rateItems: RateItem[] = [...grouped.values()].map((group) => { const item = group[0]!.item; return { name: item.name, description: item.description, product_hs_code: item.productHsCode, ...(item.productHsCodeDescription ? { product_hs_code_description: item.productHsCodeDescription } : {}), weight: item.unitWeight, unit_price: item.unitPrice, country: item.country, quantity: group.length, amount: item.amount === undefined ? item.unitPrice * group.length : (item.amount / item.quantity) * group.length }; });
     const emptyWeight = box.definition.emptyWeight ?? 0; const availableVolume = volume(box.definition.innerDimensions); const usedAdjustedVolume = box.units.reduce((n, u) => n + u.volume, 0);
     const rateBox: RateBox = { index: box.index, ...box.definition.innerDimensions, weight: box.contentsWeight + emptyWeight, items: rateItems };
-    return { index: box.index, catalogBoxId: box.definition.id, catalogBoxName: box.definition.name, dimensions: box.definition.innerDimensions, contentsWeight: box.contentsWeight, emptyWeight, totalWeight: box.contentsWeight + emptyWeight, usedAdjustedVolume, availableVolume, utilization: usedAdjustedVolume / availableVolume, items: assignments, rateBox };
+    return { index: box.index, catalogBoxId: box.definition.id, catalogBoxName: box.definition.name, dimensions: { ...box.definition.innerDimensions }, contentsWeight: box.contentsWeight, emptyWeight, totalWeight: box.contentsWeight + emptyWeight, usedAdjustedVolume, availableVolume, utilization: usedAdjustedVolume / availableVolume, items: assignments, rateBox };
   });
   const totals = { boxCount: boxes.length, itemUnitCount: units.length, contentsWeight: boxes.reduce((n, b) => n + b.contentsWeight, 0), packagingWeight: boxes.reduce((n, b) => n + b.emptyWeight, 0), totalWeight: boxes.reduce((n, b) => n + b.totalWeight, 0), adjustedVolume: boxes.reduce((n, b) => n + b.usedAdjustedVolume, 0) };
   return { mode: 'automatic', valid: issues.length === 0 && unpackedItems.length === 0, boxes, rateBoxes: boxes.map((b) => b.rateBox), unpackedItems, issues, totals };

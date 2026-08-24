@@ -42,6 +42,7 @@ describe('UI contracts', () => {
     draft.boxes[0]!.length = '12.5';
     draft.boxes[0]!.items[0]!.weight = '1.25';
     draft.boxes[0]!.items[0]!.quantity = '2';
+    draft.boxes[0]!.weight = '2.5';
     delete draft.boxes[0]!.items[0]!.price;
     delete draft.boxes[0]!.items[0]!.product_hs_code_description;
     expect(validateRateRequest(draft, 'SFN').valid).toBe(true);

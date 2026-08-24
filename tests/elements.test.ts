@@ -138,6 +138,48 @@ describe('AfricanIES custom elements', () => {
     expect(element.value.boxes.map((box) => box.index)).toEqual([0, 2, '3']);
   });
 
+  it('uses Products API selection to supply the item HS code', async () => {
+    const search = vi.fn().mockResolvedValue({ success: true, status_code: 200, message: 'ok', data: [{ id: 1, hs_code: '6204420000', name: 'Cotton dresses', active: true, deleted_at: null, created_at: '2026-01-01', updated_at: null }] });
+    const element = document.createElement('africanies-shipment-builder'); element.client = fakeClient({ products: { search } }); element.value = rateRequest(); document.body.append(element);
+    for (let step = 0; step < 3; step += 1) element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="next-step"]')!.click();
+    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="search-product"]')!.click(); await nextTask();
+    expect(search).toHaveBeenCalled();
+    const select = element.shadowRoot!.querySelector<HTMLSelectElement>('[data-product-result]')!; select.value = '6204420000'; select.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(element.value.boxes[0]!.items[0]).toMatchObject({ product_hs_code: '6204420000', product_hs_code_description: 'Cotton dresses' });
+  });
+
+  it('ignores a product search completed after the builder client changes', async () => {
+    let resolveSearch!: (value: unknown) => void;
+    const search = vi.fn().mockImplementation(() => new Promise((resolve) => { resolveSearch = resolve; }));
+    const element = document.createElement('africanies-shipment-builder'); element.client = fakeClient({ products: { search } }); element.value = rateRequest(); document.body.append(element);
+    for (let step = 0; step < 3; step += 1) element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="next-step"]')!.click();
+    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="search-product"]')!.click();
+    element.client = fakeClient({ products: { search: vi.fn() } });
+    resolveSearch({ success: true, status_code: 200, message: 'ok', data: [{ id: 1, hs_code: 'STALE', name: 'Stale product', active: true, deleted_at: null, created_at: '2026-01-01', updated_at: null }] });
+    await nextTask();
+    expect(element.shadowRoot!.textContent).not.toContain('Stale product');
+    expect(element.value.boxes[0]!.items[0]!.product_hs_code).toBe('');
+  });
+
+  it('keeps concurrent product results isolated when two item searches complete out of order', async () => {
+    const resolvers = new Map<string, (value: unknown) => void>();
+    const search = vi.fn().mockImplementation((query: string) => new Promise((resolve) => { resolvers.set(query, resolve); }));
+    const draft = rateRequest(); draft.boxes[0]!.items.push({ ...structuredClone(draft.boxes[0]!.items[0]!), name: 'Cotton dress', product_hs_code: '' });
+    const element = document.createElement('africanies-shipment-builder'); element.client = fakeClient({ products: { search } }); element.value = draft; document.body.append(element);
+    for (let step = 0; step < 3; step += 1) element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="next-step"]')!.click();
+    const queries = element.shadowRoot!.querySelectorAll<HTMLInputElement>('[data-product-query]'); queries[0]!.value = 'head gear'; queries[1]!.value = 'dress';
+    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="search-product"][data-item="0"]')!.click();
+    const secondQuery = element.shadowRoot!.querySelector<HTMLInputElement>('[data-product-query][data-item="1"]')!; secondQuery.value = 'dress';
+    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="search-product"][data-item="1"]')!.click();
+    resolvers.get('dress')!({ success: true, status_code: 200, message: 'ok', data: [{ id: 2, hs_code: '6204420000', name: 'Cotton dresses', active: true, deleted_at: null, created_at: '2026-01-01', updated_at: null }] });
+    await nextTask();
+    resolvers.get('head gear')!({ success: true, status_code: 200, message: 'ok', data: [{ id: 1, hs_code: '6506100000', name: 'Head gear', active: true, deleted_at: null, created_at: '2026-01-01', updated_at: null }] });
+    await nextTask();
+    const results = element.shadowRoot!.querySelectorAll<HTMLSelectElement>('[data-product-result]');
+    expect(results[0]!.textContent).toContain('Head gear'); expect(results[0]!.textContent).not.toContain('Cotton dresses');
+    expect(results[1]!.textContent).toContain('Cotton dresses'); expect(results[1]!.textContent).not.toContain('Head gear');
+  });
+
   it('renders purchase validation issues instead of silently rejecting', async () => {
     const purchase = vi.fn();
     const request = purchaseRequest();
@@ -272,7 +314,7 @@ describe('AfricanIES custom elements', () => {
     const purchase = vi.fn().mockResolvedValue(response);
     const element = document.createElement('africanies-purchase-confirmation');
     element.client = fakeClient({ shipments: { purchase } });
-    element.request = purchaseRequest();
+    const insuredRequest = purchaseRequest(); insuredRequest.is_insured = '1'; element.request = insuredRequest;
     document.body.append(element);
     element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="purchase"]')!.click();
     await nextTask();
@@ -283,6 +325,20 @@ describe('AfricanIES custom elements', () => {
       expect(element.shadowRoot!.textContent).not.toContain(secretBase64);
       expect(element.shadowRoot!.innerHTML).not.toContain(secretBase64);
     }
+  });
+
+  it('labels insurance as not requested and rejects insecure remote result links', async () => {
+    const response = { success: true, status_code: 200, message: 'ok', data: {
+      reference: 'EX-HTTP', tracking_number: 'TRK-HTTP', tracking_url: 'http://example.test/track',
+      documents: { waybill_doc: null, insurance_doc: 'http://example.test/insurance', invoice_doc: 'http://example.test/invoice' },
+      waybill_is_url: 1, insurance_is_url: 1, invoice_is_url: 1, mode: 'sfn',
+    } };
+    const element = document.createElement('africanies-purchase-confirmation');
+    element.client = fakeClient({ shipments: { purchase: vi.fn().mockResolvedValue(response) } }); element.request = purchaseRequest(); document.body.append(element);
+    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="purchase"]')!.click(); await nextTask();
+    expect(element.shadowRoot!.querySelector('a[href^="http://example.test"]')).toBeNull();
+    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-document="insurance"]')!.click();
+    expect(element.shadowRoot!.textContent).toContain('Not requested for this shipment');
   });
 
   it('reloads rates and restores rendering after detach and reattach', async () => {

@@ -47,6 +47,7 @@ test('selected shipping amount is validated for host order totals', () => {
 });
 
 test('PayDemo only confirms the successful simulation', () => {
-  assert.equal(payDemoResult('success').confirmed, true); assert.equal(payDemoResult('failed').confirmed, false);
-  assert.match(payDemoResult('cancelled').id, /^PAYDEMO-/);
+  const paid = payDemoResult('success', { amount: 30500, currency: 'NGN' });
+  assert.equal(paid.confirmed, true); assert.equal(paid.amount, 30500); assert.equal(paid.currency, 'NGN');
+  assert.equal(payDemoResult('failed').confirmed, false); assert.match(payDemoResult('cancelled').id, /^PAYDEMO-/);
 });

@@ -7,6 +7,7 @@ import type {
   ShipmentRateDraft,
   ShipmentRateRequest,
 } from '../types.js';
+import { shipmentGeographyIssues } from '../shipment-validation.js';
 
 export interface ValidationIssue {
   path: string;
@@ -18,23 +19,12 @@ export interface ValidationResult {
   issues: ValidationIssue[];
 }
 
-function isNigeria(value: unknown): boolean {
-  return typeof value === 'string' && ['NG', 'NGA', 'NIGERIA'].includes(value.trim().toUpperCase());
-}
-
 export function validateShipmentGeography(
   shipmentMode: ShipmentMode,
   addresses: ShipmentRateDraft['addresses'] | ShipmentRateRequest['addresses'] | ShipmentPurchaseRequest['address'],
   root: 'addresses' | 'address' = 'addresses',
 ): ValidationIssue[] {
-  const role = shipmentMode === 'SFN' ? 'sender' : 'receiver';
-  if (isNigeria(addresses?.[role]?.country)) return [];
-  return [{
-    path: `${root}.${role}.country`,
-    message: shipmentMode === 'SFN'
-      ? 'SFN means Ship From Nigeria; sender country must be Nigeria.'
-      : 'STN means Ship To Nigeria; receiver country must be Nigeria.',
-  }];
+  return shipmentGeographyIssues(shipmentMode, addresses, root);
 }
 
 function requiredString(value: unknown, path: string, issues: ValidationIssue[]): void {
@@ -53,6 +43,20 @@ function finiteNumber(value: unknown, path: string, issues: ValidationIssue[]): 
     issues.push({ path, message: 'Enter a valid non-negative number.' });
     return 0;
   }
+  return parsed;
+}
+
+function positiveNumber(value: unknown, path: string, issues: ValidationIssue[]): number {
+  const parsed = finiteNumber(value, path, issues);
+  if (Number.isFinite(parsed) && parsed <= 0 && !issues.some((issue) => issue.path === path)) {
+    issues.push({ path, message: 'Enter a number greater than zero.' });
+  }
+  return parsed;
+}
+
+function positiveInteger(value: unknown, path: string, issues: ValidationIssue[]): number {
+  const parsed = positiveNumber(value, path, issues);
+  if (parsed > 0 && !Number.isInteger(parsed)) issues.push({ path, message: 'Enter a positive whole-number quantity.' });
   return parsed;
 }
 
@@ -230,10 +234,12 @@ export function validateRateRequest(
   if (!Array.isArray(request.boxes) || request.boxes.length === 0) {
     issues.push({ path: 'boxes', message: 'Add at least one box.' });
   } else {
+    const boxIndexes = new Set<number>();
     request.boxes.forEach((box, boxIndex) => {
-      for (const field of ['index', 'length', 'width', 'height', 'weight'] as const) {
-        finiteNumber(box[field], `boxes.${boxIndex}.${field}`, issues);
-      }
+      const parsedIndex = finiteNumber(box.index, `boxes.${boxIndex}.index`, issues);
+      if (!Number.isInteger(parsedIndex) || parsedIndex < 0 || boxIndexes.has(parsedIndex)) issues.push({ path: `boxes.${boxIndex}.index`, message: 'Box index must be a unique non-negative integer.' });
+      boxIndexes.add(parsedIndex);
+      for (const field of ['length', 'width', 'height', 'weight'] as const) positiveNumber(box[field], `boxes.${boxIndex}.${field}`, issues);
       if (!Array.isArray(box.items) || box.items.length === 0) {
         issues.push({ path: `boxes.${boxIndex}.items`, message: 'Add at least one item.' });
       } else {
@@ -252,11 +258,13 @@ export function validateRateRequest(
           if (item.price !== undefined) {
             finiteNumber(item.price, `boxes.${boxIndex}.items.${itemIndex}.price`, issues);
           }
-          finiteNumber(item.weight, `boxes.${boxIndex}.items.${itemIndex}.weight`, issues);
+          positiveNumber(item.weight, `boxes.${boxIndex}.items.${itemIndex}.weight`, issues);
           finiteNumber(item.unit_price, `boxes.${boxIndex}.items.${itemIndex}.unit_price`, issues);
-          finiteNumber(item.quantity, `boxes.${boxIndex}.items.${itemIndex}.quantity`, issues);
+          positiveInteger(item.quantity, `boxes.${boxIndex}.items.${itemIndex}.quantity`, issues);
           finiteNumber(item.amount, `boxes.${boxIndex}.items.${itemIndex}.amount`, issues);
         });
+        const derivedWeight = box.items.reduce((sum, item) => sum + Number(item.weight) * Number(item.quantity), 0);
+        if (Number.isFinite(derivedWeight) && Number(box.weight) + 1e-9 < derivedWeight) issues.push({ path: `boxes.${boxIndex}.weight`, message: `Box weight cannot be less than its quantity × unit-weight total (${derivedWeight}).` });
       }
     });
   }
@@ -317,6 +325,26 @@ export function validatePurchaseRequest(
   }
   if (!Array.isArray(request.boxes) || request.boxes.length === 0) {
     issues.push({ path: 'boxes', message: 'Add at least one box.' });
+  } else {
+    const boxIndexes = new Set<number>();
+    request.boxes.forEach((box, boxIndex) => {
+      finiteNumber(box.index, `boxes.${boxIndex}.index`, issues);
+      if (!Number.isInteger(box.index) || box.index < 0 || boxIndexes.has(box.index)) issues.push({ path: `boxes.${boxIndex}.index`, message: 'Box index must be a unique non-negative integer.' });
+      boxIndexes.add(box.index);
+      for (const field of ['length', 'width', 'height', 'weight'] as const) positiveNumber(box[field], `boxes.${boxIndex}.${field}`, issues);
+      if (!Array.isArray(box.items) || box.items.length === 0) issues.push({ path: `boxes.${boxIndex}.items`, message: 'Add at least one item.' });
+      else {
+        box.items.forEach((item, itemIndex) => {
+        for (const field of ['name', 'description', 'product_hs_code', 'country'] as const) requiredString(item[field], `boxes.${boxIndex}.items.${itemIndex}.${field}`, issues);
+        positiveNumber(item.weight, `boxes.${boxIndex}.items.${itemIndex}.weight`, issues);
+        finiteNumber(item.unit_price, `boxes.${boxIndex}.items.${itemIndex}.unit_price`, issues);
+        positiveInteger(item.quantity, `boxes.${boxIndex}.items.${itemIndex}.quantity`, issues);
+        finiteNumber(item.amount, `boxes.${boxIndex}.items.${itemIndex}.amount`, issues);
+        });
+        const derivedWeight = box.items.reduce((sum, item) => sum + item.weight * item.quantity, 0);
+        if (Number.isFinite(derivedWeight) && box.weight + 1e-9 < derivedWeight) issues.push({ path: `boxes.${boxIndex}.weight`, message: `Box weight cannot be less than its quantity × unit-weight total (${derivedWeight}).` });
+      }
+    });
   }
   return { valid: issues.length === 0, issues };
 }

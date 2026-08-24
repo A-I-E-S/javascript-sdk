@@ -6,7 +6,8 @@ export type { AfricaniesErrorCategory, AfricaniesErrorOptions } from './errors.j
 export { createFetchTransport } from './transport.js';
 export type { AfricaniesTransport, FetchTransportOptions, HttpMethod, TransportRequest } from './transport.js';
 export type * from './types.js';
+export { assertShipmentGeography, assertShipmentRequest, isNigeriaCountry, shipmentGeographyIssues, shipmentRequestIssues } from './shipment-validation.js';
 export { calculatePackaging } from './packaging.js';
 export type * from './packaging.js';
-export { buildRateRequestFromPackaging, purchaseAfterPayment, selectCheckoutRate } from './checkout.js';
+export { buildRateRequestFromPackaging, createCheckoutPurchaseIntent, createCheckoutShippingQuote, purchaseAfterPayment, selectCheckoutRate } from './checkout.js';
 export type * from './checkout.js';

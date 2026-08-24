@@ -1,5 +1,5 @@
 import type { AfricaniesClient } from '../client.js';
-import type { RateBoxDraft, RateItemDraft, ShipmentRateDraft, ShipmentRateDraftAddress, ShipmentUnits } from '../types.js';
+import type { ProductHsCode, RateBoxDraft, RateItemDraft, ShipmentRateDraft, ShipmentRateDraftAddress, ShipmentUnits } from '../types.js';
 import { completeRateRequest, validateRateRequest, type ValidationIssue } from '../ui/validation.js';
 import { AfricaniesElement, escapeHtml, sharedStyles, testModeMarkup } from './base.js';
 
@@ -70,11 +70,19 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
   #value: ShipmentRateDraft | undefined;
   #issues: ValidationIssue[] = [];
   #step = 0;
+  #productResults = new Map<string, ProductHsCode[]>();
+  #productStatus = new Map<string, string>();
+  #productSearches = new Map<string, { version: number; controller: AbortController }>();
 
   get client(): AfricaniesClient | undefined { return this.#client; }
   set client(value: AfricaniesClient | undefined) {
+    this.cancelProductSearches();
     this.#client = value;
     this.projectClientConfiguration(value);
+  }
+
+  disconnectedCallback(): void {
+    this.cancelProductSearches();
   }
 
   override attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null): void {
@@ -154,12 +162,13 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
 
   private renderItem(item: RateItemDraft, boxIndex: number, itemIndex: number): string {
     const fields: Array<[keyof RateItemDraft, string, string]> = [
-      ['name', 'Item name', 'text'], ['description', 'Description', 'text'], ['product_hs_code', 'HS code', 'text'],
-      ['product_hs_code_description', 'HS description (optional)', 'text'], ['country', 'Country of origin', 'text'],
-      ['weight', 'Weight', 'text'], ['quantity', 'Quantity', 'text'], ['price', 'Price (optional)', 'number'],
+      ['name', 'Item name', 'text'], ['description', 'Description', 'text'], ['country', 'Country of origin', 'text'],
+      ['weight', 'Unit weight', 'text'], ['quantity', 'Quantity', 'text'], ['price', 'Price (optional)', 'number'],
       ['unit_price', 'Unit price', 'number'], ['amount', 'Amount', 'text'],
     ];
-    return `<div class="item"><div class="section-title"><strong>Item ${itemIndex + 1}</strong><button class="danger" type="button" data-action="remove-item" data-box="${boxIndex}" data-item="${itemIndex}" ${this.#value!.boxes[boxIndex]!.items.length === 1 ? 'disabled' : ''}>Remove</button></div><div class="grid">${fields.map(([key, label, type]) => { const path = `boxes.${boxIndex}.items.${itemIndex}.${String(key)}`; return `<label>${label}<input type="${type}" data-path="${path}" data-box="${boxIndex}" data-item="${itemIndex}" data-item-field="${String(key)}" value="${escapeHtml(item[key])}" ${this.issueAttributes(path)}>${this.issueMarkup(path)}</label>`; }).join('')}</div></div>`;
+    const resultKey = `${boxIndex}:${itemIndex}`;
+    const results = this.#productResults.get(resultKey) ?? [];
+    return `<div class="item"><div class="section-title"><strong>Item ${itemIndex + 1}</strong><button class="danger" type="button" data-action="remove-item" data-box="${boxIndex}" data-item="${itemIndex}" ${this.#value!.boxes[boxIndex]!.items.length === 1 ? 'disabled' : ''}>Remove</button></div><div class="grid">${fields.map(([key, label, type]) => { const path = `boxes.${boxIndex}.items.${itemIndex}.${String(key)}`; return `<label>${label}<input type="${type}" data-path="${path}" data-box="${boxIndex}" data-item="${itemIndex}" data-item-field="${String(key)}" value="${escapeHtml(item[key])}" ${this.issueAttributes(path)}>${this.issueMarkup(path)}</label>`; }).join('')}<div><label>Find closest product<input data-product-query data-box="${boxIndex}" data-item="${itemIndex}" value="${escapeHtml(item.product_hs_code_description ?? item.name)}"></label><button class="secondary" type="button" data-action="search-product" data-box="${boxIndex}" data-item="${itemIndex}" ${!this.#client ? 'disabled title="Set client to search products"' : ''}>Search products</button><select aria-label="Select product classification" data-product-result data-box="${boxIndex}" data-item="${itemIndex}" ${results.length ? '' : 'hidden'}><option value="">Select a product…</option>${results.map((product) => `<option value="${escapeHtml(product.hs_code)}" data-name="${escapeHtml(product.name)}" ${product.hs_code === item.product_hs_code ? 'selected' : ''}>${escapeHtml(product.name)}</option>`).join('')}</select><p class="muted" role="status" aria-live="polite">${escapeHtml(this.#productStatus.get(resultKey) ?? (item.product_hs_code ? `${item.product_hs_code_description ?? 'Selected product'} · HS ${item.product_hs_code}` : 'Search the Products API; selecting a product supplies its HS code.'))}</p></div></div></div>`;
   }
 
   private bind(): void {
@@ -169,6 +178,7 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
     form.addEventListener('click', (event) => this.handleAction(event));
     form.querySelector('[data-action="next-step"]')?.addEventListener('click', () => { this.#step = Math.min(4, this.#step + 1); this.render(); });
     form.querySelector('[data-action="previous-step"]')?.addEventListener('click', () => { this.#step = Math.max(0, this.#step - 1); this.render(); });
+    form.querySelectorAll<HTMLButtonElement>('[data-action="search-product"]').forEach((button) => button.addEventListener('click', () => void this.searchProducts(Number(button.dataset.box), Number(button.dataset.item))));
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       const result = validateRateRequest(this.#value!, this.shipmentMode);
@@ -194,6 +204,16 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
 
   private handleInput(event: Event): void {
     const input = event.target as HTMLInputElement | HTMLSelectElement;
+    if (input.matches('[data-product-result]')) {
+      const boxIndex = Number(input.dataset.box); const itemIndex = Number(input.dataset.item);
+      const option = (input as HTMLSelectElement).selectedOptions[0]; const item = this.#value!.boxes[boxIndex]!.items[itemIndex]!;
+      if (option?.value) {
+        item.product_hs_code = option.value; item.product_hs_code_description = option.dataset.name ?? option.textContent ?? '';
+        this.#productStatus.set(`${boxIndex}:${itemIndex}`, `${item.product_hs_code_description} · HS ${item.product_hs_code}`);
+        this.emit('africanies-change', clone(this.#value!)); this.render();
+      }
+      return;
+    }
     const field = input.dataset.field;
     const role = input.dataset.address as 'sender' | 'receiver' | undefined;
     if (role && field) {
@@ -220,18 +240,50 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
     this.emit('africanies-change', clone(this.#value!));
   }
 
+  private async searchProducts(boxIndex: number, itemIndex: number): Promise<void> {
+    if (!this.#client) return;
+    const client = this.#client;
+    const query = this.root.querySelector<HTMLInputElement>(`[data-product-query][data-box="${boxIndex}"][data-item="${itemIndex}"]`)?.value.trim() ?? '';
+    const key = `${boxIndex}:${itemIndex}`; const item = this.#value!.boxes[boxIndex]!.items[itemIndex]!;
+    this.#productSearches.get(key)?.controller.abort();
+    const search = { version: (this.#productSearches.get(key)?.version ?? 0) + 1, controller: new AbortController() };
+    this.#productSearches.set(key, search);
+    item.product_hs_code = ''; delete item.product_hs_code_description; this.#productResults.delete(key);
+    if (!query) { this.#productSearches.delete(key); this.#productStatus.set(key, 'Enter a product name to search.'); this.render(); return; }
+    this.#productStatus.set(key, 'Searching products…'); this.render();
+    try {
+      const response = await client.products.search(query, search.controller.signal);
+      if (this.#productSearches.get(key) !== search || client !== this.#client || !this.isConnected) return;
+      const results = Array.isArray(response.data) ? response.data : [];
+      this.#productResults.set(key, results); this.#productStatus.set(key, results.length ? `${results.length} products found. Select the closest match.` : 'No matching products found.');
+    } catch (cause) {
+      if (this.#productSearches.get(key) !== search || client !== this.#client || !this.isConnected || search.controller.signal.aborted) return;
+      this.#productStatus.set(key, cause instanceof Error ? cause.message : 'Product search failed.');
+    }
+    if (this.#productSearches.get(key) === search) this.#productSearches.delete(key);
+    this.render();
+  }
+
+  private cancelProductSearches(): void {
+    for (const search of this.#productSearches.values()) search.controller.abort();
+    this.#productSearches.clear();
+  }
+
   private handleAction(event: Event): void {
     const button = (event.target as Element).closest<HTMLButtonElement>('button[data-action]');
     if (!button) return;
     const boxIndex = Number(button.dataset.box);
+    let changed = false;
     if (button.dataset.action === 'add-box') {
       const indexes = this.#value!.boxes.map((box) => Number(box.index)).filter(Number.isFinite);
       const nextIndex = indexes.length === 0 ? 0 : Math.max(...indexes) + 1;
       this.#value!.boxes.push(emptyBox(nextIndex));
+      changed = true;
     }
-    if (button.dataset.action === 'remove-box' && this.#value!.boxes.length > 1) this.#value!.boxes.splice(boxIndex, 1);
-    if (button.dataset.action === 'add-item') this.#value!.boxes[boxIndex]!.items.push(emptyItem());
-    if (button.dataset.action === 'remove-item' && this.#value!.boxes[boxIndex]!.items.length > 1) this.#value!.boxes[boxIndex]!.items.splice(Number(button.dataset.item), 1);
+    if (button.dataset.action === 'remove-box' && this.#value!.boxes.length > 1) { this.#value!.boxes.splice(boxIndex, 1); changed = true; }
+    if (button.dataset.action === 'add-item') { this.#value!.boxes[boxIndex]!.items.push(emptyItem()); changed = true; }
+    if (button.dataset.action === 'remove-item' && this.#value!.boxes[boxIndex]!.items.length > 1) { this.#value!.boxes[boxIndex]!.items.splice(Number(button.dataset.item), 1); changed = true; }
+    if (!changed) return;
     this.render();
     this.emit('africanies-change', clone(this.#value!));
   }

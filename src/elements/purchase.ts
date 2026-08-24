@@ -68,7 +68,17 @@ export class AfricaniesPurchaseConfirmationElement extends AfricaniesElement {
       ${!result && this.#request ? `<div class="actions"><button class="primary" type="button" data-action="purchase" ${state?.status === 'submitting' ? 'disabled' : ''}>${state?.status === 'submitting' ? 'Purchasing…' : 'Purchase shipment'}</button></div>` : ''}
     </section>`;
     this.root.querySelector('[data-action="purchase"]')?.addEventListener('click', () => void this.submit());
-    this.root.querySelectorAll<HTMLButtonElement>('[data-document]').forEach((button) => button.addEventListener('click', () => { this.#activeDocument = button.dataset.document as 'waybill' | 'invoice' | 'insurance'; this.render(); }));
+    this.root.querySelectorAll<HTMLButtonElement>('[data-document]').forEach((button) => {
+      button.addEventListener('click', () => { this.#activeDocument = button.dataset.document as 'waybill' | 'invoice' | 'insurance'; this.render(); this.root.querySelector<HTMLButtonElement>(`[data-document="${this.#activeDocument}"]`)?.focus(); });
+      button.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        const keys = ['waybill', 'invoice', 'insurance'] as const;
+        const offset = event.key === 'ArrowRight' ? 1 : -1;
+        const next = (keys.indexOf(this.#activeDocument) + offset + keys.length) % keys.length;
+        this.#activeDocument = keys[next]!; this.render(); this.root.querySelector<HTMLButtonElement>(`[data-document="${this.#activeDocument}"]`)?.focus();
+      });
+    });
   }
 
   private renderDocuments(result: ShipmentPurchaseResult): string {
@@ -79,10 +89,14 @@ export class AfricaniesPurchaseConfirmationElement extends AfricaniesElement {
     };
     const active = documents[this.#activeDocument];
     const href = active.flag === 1 ? safeExternalUrl(active.value) : undefined;
-    const panel = href
-      ? `<div class="document-panel" role="tabpanel"><p><a class="button secondary" target="_blank" rel="noopener noreferrer" href="${escapeHtml(href)}">Open ${escapeHtml(active.label)}</a></p><iframe title="${escapeHtml(active.label)} preview" src="${escapeHtml(href)}"></iframe></div>`
-      : `<div class="document-panel" role="tabpanel">${renderDocument(active.label, active.value, active.flag, active.required)}</div>`;
-    return `<section class="documents"><div class="document-tabs" role="tablist">${(Object.keys(documents) as Array<keyof typeof documents>).map((key) => `<button type="button" role="tab" data-document="${key}" aria-selected="${key === this.#activeDocument}">${documents[key].label}</button>`).join('')}</div>${panel}</section>`;
+    const notRequested = this.#activeDocument === 'insurance' && this.#request?.is_insured !== '1';
+    const panelContent = notRequested
+      ? '<div class="card document-unavailable"><strong>Insurance</strong><span class="muted">Not requested for this shipment</span></div>'
+      : renderDocument(active.label, active.value, active.flag, active.required);
+    const panel = href && !notRequested
+      ? `<div id="africanies-document-panel" class="document-panel" role="tabpanel" aria-labelledby="africanies-document-tab-${this.#activeDocument}"><p><a class="button secondary" target="_blank" rel="noopener noreferrer" href="${escapeHtml(href)}">Open ${escapeHtml(active.label)}</a></p><iframe title="${escapeHtml(active.label)} preview" src="${escapeHtml(href)}"></iframe></div>`
+      : `<div id="africanies-document-panel" class="document-panel" role="tabpanel" aria-labelledby="africanies-document-tab-${this.#activeDocument}">${panelContent}</div>`;
+    return `<section class="documents"><div class="document-tabs" role="tablist" aria-label="Shipment documents">${(Object.keys(documents) as Array<keyof typeof documents>).map((key) => `<button id="africanies-document-tab-${key}" type="button" role="tab" data-document="${key}" aria-controls="africanies-document-panel" aria-selected="${key === this.#activeDocument}" tabindex="${key === this.#activeDocument ? '0' : '-1'}">${documents[key].label}</button>`).join('')}</div>${panel}</section>`;
   }
 
   private async submit(): Promise<void> {

@@ -35,4 +35,8 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium firefox webkit
       - run: npm run build
+      - run: npm --prefix examples/vanilla run build
+        env:
+          GITHUB_ACTIONS: 'true'
+      - run: node scripts/verify-pages-artifact.mjs
       - run: npm run test:browser:built

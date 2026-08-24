@@ -10,7 +10,7 @@ The journey covers:
 4. Enter the customer delivery address.
 5. Use the SDK automatic packaging mode with a 1 cm allowance on every item dimension, a configurable box catalogue, and a 30 kg maximum gross weight.
 6. Retrieve and select a carrier rate and include its `payment_amount` in the displayed order total.
-7. Complete a clearly simulated PayDemo payment. Shipment purchase is called only after PayDemo returns explicit success.
+7. Complete a clearly simulated PayDemo payment for the displayed merchandise plus delivery total. The demo retains PayDemo's full amount, currency, and reference. Because Africanies owns only delivery, shipment purchase separately binds that host-confirmed payment reference to the shipping portion through the SDK's intent-bound `purchaseAfterPayment()` helper.
 8. Purchase with `file_is_url: 1` and the chosen `is_insured: '0' | '1'`, then show tracking, waybill, commercial invoice, and insurance documents returned by the API.
 
 The credential is held in page memory only and cleared from the input after validation. It is not placed in storage, URLs, source, or logs. Base64 is reversible and browser users can inspect outbound authorization; use sandbox credentials only.
@@ -31,6 +31,10 @@ npm test
 npm run build
 ```
 
-The production build is static and suitable for GitHub Pages. The deployed origin must be allowed by the Africanies sandbox CORS policy. Do not build a public artifact with `VITE_AFRICANIES_ENCODED_KEY` or any credential embedded in its environment.
+The production build is static and the deployment workflow supplies the `/javascript-sdk/` GitHub Pages project base. The deployed origin must be allowed by the Africanies sandbox CORS policy. Do not build a public artifact with `VITE_AFRICANIES_ENCODED_KEY` or any credential embedded in its environment.
+
+The demo keeps one external reference and immutable purchase intent for an attempted order. A definitive validation or rejected API response can be corrected safely. If network delivery is uncertain, or the API response could follow an accepted request, the demo blocks automatic retry and directs the tester to reconcile that reference rather than risking a duplicate shipment.
+
+URL documents are opened only over HTTPS. Base64 PDF downloads are decoded in memory only after format validation and are capped at 10 MB; malformed or oversized document data produces a clear unavailable state instead of an unbounded browser allocation.
 
 The SDK still supports manual packaging for host applications that select that integration mode. The storefront does not offer that choice to customers; this demo’s host configuration selects automatic packaging.

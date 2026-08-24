@@ -1,6 +1,7 @@
 import { resolveAuthorization, type AfricaniesAuth } from './auth.js';
 import { AfricaniesError, redactUrl } from './errors.js';
 import { createFetchTransport, type AfricaniesTransport } from './transport.js';
+import { assertShipmentRequest } from './shipment-validation.js';
 import type {
   AddressVerifyRequest,
   AddressVerifyResult,
@@ -261,8 +262,8 @@ export function createAfricaniesClient(config: AfricaniesClientConfig): Africani
       get: (id, signal) => request('GET', selectorPath('/product', id), undefined, signal),
     },
     shipments: {
-      getRates: (body, signal) => request('POST', '/shipment/rates', body, signal),
-      purchase: (body, signal) => request('POST', '/shipment/purchase', body, signal),
+      getRates: async (body, signal) => { assertShipmentRequest(body, config.shipmentMode, 'rate'); return request('POST', '/shipment/rates', body, signal); },
+      purchase: async (body, signal) => { assertShipmentRequest(body, config.shipmentMode, 'purchase'); return request('POST', '/shipment/purchase', body, signal); },
       track: (trackingNumber, signal) =>
         request(
           'POST',

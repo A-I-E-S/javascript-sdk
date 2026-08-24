@@ -1,6 +1,6 @@
 {
   "name": "@africanies/shipping",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Official AfricanIES Shipping JavaScript and TypeScript SDK",
   "type": "module",
   "license": "MIT",

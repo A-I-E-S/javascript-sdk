@@ -23,18 +23,30 @@ function userFacingError(cause, fallback) {
 function show(id) { const order = ['catalog-section', 'address-section', 'shipping-section', 'payment-section', 'result-section']; const active = order.indexOf(id); for (const section of document.querySelectorAll('#store-view > section.content')) section.hidden = section.id !== id; document.querySelectorAll('[data-progress]').forEach((step) => { const index = Number(step.dataset.progress); step.classList.toggle('active', index === active); step.classList.toggle('done', index < active); if (index === active) step.setAttribute('aria-current', 'step'); else step.removeAttribute('aria-current'); }); error(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
 function setBusy(button, busy, label) { button.disabled = busy; if (busy) { button.dataset.label = button.textContent; button.textContent = label; } else if (button.dataset.label) button.textContent = button.dataset.label; }
 
+function resetSession() {
+  Object.keys(state.productSearches).forEach(cancelProductSearch);
+  state.client = null; state.cart = {}; state.classifications = {}; state.productSearches = {}; state.lines = [];
+  state.packaging = null; state.rateRequest = null; state.rates = []; state.quote = null; state.selection = null;
+  state.selectedRate = null; state.payment = null; state.purchaseIntent = null; state.externalReference = null; state.purchaseState = 'idle';
+  state.documentUrls.forEach((url) => URL.revokeObjectURL(url)); state.documentUrls = [];
+  $('#encoded-key').value = ''; $('#login-status').textContent = ''; $('#login-status').className = 'message';
+  $('#address-form').reset(); $('#cart-count').textContent = '0'; $('#authenticated-actions').hidden = true;
+  $('#store-view').hidden = true; $('#login-view').hidden = false; error(); renderCatalog(); $('#encoded-key').focus();
+}
+
 function renderCatalog() {
   $('#catalog').innerHTML = DEMO_PRODUCTS.map((product) => `<article class="product-card">
     <div class="product-art ${product.id}" aria-hidden="true">${product.name.slice(0, 1)}</div>
     <div class="product-copy"><small>PRODUCT CLASSIFICATION REQUIRED</small><h3>${product.name}</h3><p>${product.description}</p>
     <dl><div><dt>Unit weight</dt><dd>${product.weight} kg</dd></div><div><dt>Size</dt><dd>${product.dimensions.length} × ${product.dimensions.width} × ${product.dimensions.height} cm</dd></div></dl>
-    <div class="classification"><label>Search Africanies products<input data-product-search="${product.id}" value="${product.name}"></label><button type="button" class="secondary search-product" data-product="${product.id}">Search</button><select data-product-results="${product.id}" hidden aria-label="Select product classification"></select><p data-product-status="${product.id}" role="status" aria-live="polite">Search and select the closest human-readable product.</p></div>
+    <div class="classification"><label>Find product classification<input data-product-search="${product.id}" value="${product.name}" aria-describedby="product-status-${product.id}" autocomplete="off"></label><button type="button" class="secondary search-product" data-product="${product.id}">Search now</button><select data-product-results="${product.id}" hidden aria-label="Select product classification"></select><p id="product-status-${product.id}" data-product-status="${product.id}" role="status" aria-live="polite">Type at least 3 characters. Search starts automatically.</p></div>
     <div class="product-action"><strong>${money(product.price)}</strong><label>Qty <input class="quantity" data-product="${product.id}" type="number" min="0" max="20" step="1" value="${state.cart[product.id] ?? 0}"></label></div></div></article>`).join('');
   document.querySelectorAll('.quantity').forEach((input) => input.addEventListener('input', () => {
     state.cart[input.dataset.product] = Math.max(0, Number(input.value)); state.lines = cartLines(state.cart);
     updateCheckoutState();
   }));
-  document.querySelectorAll('.search-product').forEach((button) => button.addEventListener('click', () => searchProducts(button.dataset.product, button)));
+  document.querySelectorAll('.search-product').forEach((button) => button.addEventListener('click', () => startProductSearch(button.dataset.product, button)));
+  document.querySelectorAll('[data-product-search]').forEach((input) => input.addEventListener('input', () => scheduleProductSearch(input.dataset.product)));
   document.querySelectorAll('[data-product-results]').forEach((select) => select.addEventListener('change', () => {
     const option = select.selectedOptions[0]; if (!option?.value) return;
     state.classifications[select.dataset.productResults] = { hs_code: option.value, name: option.textContent };
@@ -49,21 +61,35 @@ function updateCheckoutState() {
   $('#checkout-button').disabled = totals.quantity === 0 || state.lines.some((line) => !state.classifications[line.id]);
 }
 
-async function searchProducts(productId, button) {
+function cancelProductSearch(productId) {
+  const active = state.productSearches[productId]; if (!active) return;
+  clearTimeout(active.timer); active.controller?.abort(); delete state.productSearches[productId];
+}
+
+function scheduleProductSearch(productId) {
+  cancelProductSearch(productId); delete state.classifications[productId]; updateCheckoutState();
+  const query = $(`[data-product-search="${productId}"]`).value.trim(); const status = $(`[data-product-status="${productId}"]`); const select = $(`[data-product-results="${productId}"]`);
+  select.hidden = true; select.replaceChildren();
+  if (query.length < 3) { status.textContent = 'Type at least 3 characters to search.'; return; }
+  status.textContent = 'Waiting to search…';
+  const timer = setTimeout(() => void startProductSearch(productId), 350); state.productSearches[productId] = { timer };
+}
+
+async function startProductSearch(productId, button = $(`button[data-product="${productId}"].search-product`)) {
   const query = $(`[data-product-search="${productId}"]`).value.trim(); const status = $(`[data-product-status="${productId}"]`);
-  const searchId = (state.productSearches[productId] ?? 0) + 1; state.productSearches[productId] = searchId;
+  cancelProductSearch(productId); const controller = new AbortController(); const search = { controller }; state.productSearches[productId] = search;
   delete state.classifications[productId]; updateCheckoutState();
-  if (!query) { status.textContent = 'Enter a product name to search.'; return; }
+  if (query.length < 3) { delete state.productSearches[productId]; status.textContent = 'Type at least 3 characters to search.'; return; }
   setBusy(button, true, 'Searching…'); status.textContent = 'Searching Africanies products…';
   try {
-    const client = state.client; const response = await client.products.search(query);
-    if (state.productSearches[productId] !== searchId || state.client !== client) return;
+    const client = state.client; const response = await client.products.search(query, controller.signal);
+    if (state.productSearches[productId] !== search || state.client !== client) return;
     const results = Array.isArray(response.data) ? response.data : [];
     if (!results.length) throw new Error('No matching products were returned. Try a broader description.');
     const select = $(`[data-product-results="${productId}"]`); select.innerHTML = `<option value="">Select a classification…</option>${results.map((item) => `<option value="${html(item.hs_code)}">${html(item.name)}</option>`).join('')}`;
     select.hidden = false; status.textContent = `${results.length} matching classifications found.`;
-  } catch (cause) { if (state.productSearches[productId] === searchId) status.textContent = cause instanceof Error ? cause.message : 'Product search failed.'; }
-  finally { if (state.productSearches[productId] === searchId) setBusy(button, false); }
+  } catch (cause) { if (state.productSearches[productId] === search && !controller.signal.aborted) status.textContent = cause instanceof Error ? cause.message : 'Product search failed.'; }
+  finally { if (state.productSearches[productId] === search) { delete state.productSearches[productId]; setBusy(button, false); } }
 }
 
 $('#login-form').addEventListener('submit', async (event) => {
@@ -74,10 +100,12 @@ $('#login-form').addEventListener('submit', async (event) => {
     const client = Shipping.createAfricaniesClient({ environment: 'test', shipmentMode: 'SFN', auth: { encodedKey } });
     const response = await client.carriers.list();
     if (!response?.success) throw new Error(response?.message || 'Credential check was not accepted.');
-    state.client = client; $('#encoded-key').value = ''; $('#login-view').hidden = true; $('#store-view').hidden = false; renderCatalog();
+    state.client = client; $('#encoded-key').value = ''; $('#login-view').hidden = true; $('#store-view').hidden = false; $('#authenticated-actions').hidden = false; renderCatalog(); show('catalog-section');
   } catch (cause) { status.className = 'message failure'; status.textContent = cause instanceof Error ? cause.message : 'Could not validate this credential.'; }
   finally { $('#encoded-key').value = ''; if (!state.client) $('#store-view').hidden = true; setBusy(button, false); }
 });
+
+$('#logout-button').addEventListener('click', resetSession);
 
 $('#checkout-button').addEventListener('click', () => show('address-section'));
 document.querySelectorAll('[data-back]').forEach((button) => button.addEventListener('click', () => show(button.dataset.back)));
@@ -113,19 +141,24 @@ function renderRates() {
   document.querySelectorAll('input[name="rate"]').forEach((input) => input.addEventListener('change', () => { state.selectedRate = state.rates[Number(input.value)]; state.selection = Shipping.selectCheckoutRate(state.quote, state.selectedRate.slug); state.payment = null; state.purchaseIntent = null; state.externalReference = null; state.purchaseState = 'idle'; $('#rate-button').disabled = false; }));
 }
 
-$('#rate-button').addEventListener('click', () => { renderOrderSummary(); show('payment-section'); });
+$('#rate-button').addEventListener('click', () => { state.externalReference ??= `PAYDEMO-${crypto.randomUUID?.() ?? Date.now()}`; renderOrderSummary(); show('payment-section'); $('#payment-outcome').focus(); });
 function renderOrderSummary() {
   const totals = cartTotals(state.lines); const shipping = shippingAmount(state.selectedRate); const currency = state.selectedRate.others.currency;
-  $('#order-summary').innerHTML = `<h3>Order summary</h3><div class="summary-row"><span>Products (${totals.quantity})</span><strong>${html(money(totals.subtotal, currency))}</strong></div><div class="summary-row"><span>${html(state.selectedRate.name)} shipping</span><strong>${html(money(shipping, currency))}</strong></div><div class="summary-row total"><span>Total</span><strong>${html(money(totals.subtotal + shipping, currency))}</strong></div>`;
+  const insurance = state.rateRequest?.is_insured === '1' ? Number(state.selectedRate.charges.insurance_cost ?? 0) : 0;
+  $('#payment-context').innerHTML = `<div><dt>Merchant</dt><dd>Africanies Demo Store</dd></div><div><dt>Order reference</dt><dd>${html(state.externalReference)}</dd></div><div><dt>Selected carrier</dt><dd>${html(state.selectedRate.name)}</dd></div><div><dt>Payment currency</dt><dd>${html(currency)}</dd></div>`;
+  $('#order-summary').innerHTML = `<div class="summary-heading"><div><p class="eyebrow">Order summary</p><h3>Full order + delivery</h3></div><span>${html(currency)}</span></div><div class="summary-row"><span>Merchandise subtotal <small>${totals.quantity} item${totals.quantity === 1 ? '' : 's'}</small></span><strong>${html(money(totals.subtotal, currency))}</strong></div><div class="summary-row"><span>Delivery <small>${html(state.selectedRate.name)}</small></span><strong>${html(money(shipping, currency))}</strong></div>${state.rateRequest?.is_insured === '1' ? `<div class="summary-note"><span>Insurance included in delivery</span><strong>${html(money(insurance, currency))}</strong></div>` : '<div class="summary-note"><span>Shipment insurance</span><strong>Not requested</strong></div>'}<div class="summary-row total"><span>Full payment total</span><strong>${html(money(totals.subtotal + shipping, currency))}</strong></div><p class="intent-note">PayDemo confirms this full total. The SDK shipping intent remains bound only to the selected delivery amount.</p>`;
+  $('#payment-status').textContent = 'No payment has been attempted.'; $('#payment-status').className = 'message';
 }
 
 $('#pay-button').addEventListener('click', async (event) => {
   const button = event.currentTarget; setBusy(button, true, 'Processing PayDemo…'); error();
+  $('#payment-status').textContent = 'PayDemo is simulating the full order and delivery payment…'; $('#payment-status').className = 'message processing';
   try {
     if (state.purchaseState === 'uncertain') throw new Error('The previous purchase result is uncertain. Reconcile the existing external reference before retrying.');
     const totals = cartTotals(state.lines); const orderAmount = totals.subtotal + state.selection.shippingCost;
     state.payment = payDemoResult($('#payment-outcome').value, { amount: orderAmount, currency: state.selection.currency });
     if (!state.payment.confirmed) throw new Error(`PayDemo payment was ${state.payment.status}. The shipment was not purchased.`);
+    $('#payment-status').textContent = `Full payment approved · ${state.payment.id} · ${money(state.payment.amount, state.payment.currency)}`; $('#payment-status').className = 'message success-message';
     const prepared = Shipping.preparePurchaseRequest(state.rateRequest, {
       assignedDate: minimumAssignedDate(), externalReference: state.externalReference ??= `PAYDEMO-${crypto.randomUUID?.() ?? Date.now()}`,
       rate: state.selectedRate, shipmentMethodSlug: state.selectedRate.slug, fileIsUrl: 1,
@@ -141,7 +174,8 @@ $('#pay-button').addEventListener('click', async (event) => {
   } catch (cause) {
     if (state.purchaseState === 'submitting') state.purchaseState = isDefinitivePurchaseFailure(cause) ? 'failed' : 'uncertain';
     const reconciliation = state.purchaseState === 'uncertain' ? ` The result is uncertain. Reconcile external reference ${state.externalReference} before retrying.` : '';
-    error(`${cause instanceof Error ? cause.message : 'Payment or shipment purchase failed.'}${reconciliation}`);
+    const message = `${cause instanceof Error ? cause.message : 'Payment or shipment purchase failed.'}${reconciliation}`;
+    $('#payment-status').textContent = message; $('#payment-status').className = 'message failure'; error(message);
   }
   finally { setBusy(button, false); }
 });

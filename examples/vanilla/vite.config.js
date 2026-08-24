@@ -13,4 +13,12 @@ export default defineConfig({
       '@africanies/shipping/browser': fileURLToPath(new URL('../../src/browser.ts', import.meta.url)),
     },
   },
+  build: {
+    rollupOptions: {
+      input: {
+        automatic: fileURLToPath(new URL('./index.html', import.meta.url)),
+        manual: fileURLToPath(new URL('./manual.html', import.meta.url)),
+      },
+    },
+  },
 });

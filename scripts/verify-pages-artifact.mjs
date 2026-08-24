@@ -20,13 +20,16 @@ async function files(directory) {
   }))).flat();
 }
 
-const index = await readFile(new URL('index.html', root), 'utf8');
-const assetReferences = [...index.matchAll(/<(?:script|link)\b[^>]*(?:src|href)="([^"]+)"/g)]
-  .map((match) => match[1])
-  .filter((value) => value.includes('/assets/'));
+const entryDocuments = await Promise.all(['index.html', 'manual.html'].map(async (name) => ({ name, content: await readFile(new URL(name, root), 'utf8') })));
+const assetReferences = entryDocuments.flatMap(({ content }) => [...content.matchAll(/<(?:script|link)\b[^>]*(?:src|href)="([^"]+)"/g)]
+  .map((match) => match[1]).filter((value) => value.includes('/assets/')));
 
 if (assetReferences.length < 2 || assetReferences.some((value) => !value.startsWith(`${expectedBase}assets/`))) {
   throw new Error(`Pages artifact must reference emitted CSS and JavaScript under ${expectedBase}assets/*; received ${assetReferences.join(', ') || 'none'}.`);
+}
+
+if (!entryDocuments[0].content.includes('./manual.html') || !entryDocuments[1].content.includes('./')) {
+  throw new Error('Automatic and manual demos must link to each other.');
 }
 
 for (const reference of assetReferences) {

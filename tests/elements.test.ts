@@ -138,13 +138,24 @@ describe('AfricanIES custom elements', () => {
     expect(element.value.boxes.map((box) => box.index)).toEqual([0, 2, '3']);
   });
 
+  it('lets a manual host add repeatable boxes with stable indexes and box-owned item assignments', () => {
+    const element=document.createElement('africanies-shipment-builder'); element.value=rateRequest(); document.body.append(element);
+    for(let step=0;step<3;step+=1) element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="next-step"]')!.click();
+    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="add-box"]')!.click();
+    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="add-box"]')!.click();
+    expect(element.value.boxes.map((box)=>box.index)).toEqual([0,'1','2']);
+    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="add-item"][data-box="1"]')!.click();
+    expect(element.value.boxes.map((box)=>box.items.length)).toEqual([1,2,1]);
+    expect(element.shadowRoot!.textContent).toContain('Gross weight (contents + tare)');
+  });
+
   it('uses Products API selection to supply the item HS code', async () => {
     const search = vi.fn().mockResolvedValue({ success: true, status_code: 200, message: 'ok', data: [{ id: 1, hs_code: '6204420000', name: 'Cotton dresses', active: true, deleted_at: null, created_at: '2026-01-01', updated_at: null }] });
     const element = document.createElement('africanies-shipment-builder'); element.client = fakeClient({ products: { search } }); element.value = rateRequest(); document.body.append(element);
     for (let step = 0; step < 3; step += 1) element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="next-step"]')!.click();
-    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="search-product"]')!.click(); await nextTask();
+    const query=element.shadowRoot!.querySelector<HTMLInputElement>('[data-product-query]')!; query.value='cotton dress'; query.dispatchEvent(new Event('input',{bubbles:true})); await new Promise((resolve)=>setTimeout(resolve,400));
     expect(search).toHaveBeenCalled();
-    const select = element.shadowRoot!.querySelector<HTMLSelectElement>('[data-product-result]')!; select.value = '6204420000'; select.dispatchEvent(new Event('change', { bubbles: true }));
+    element.shadowRoot!.querySelector<HTMLElement>('[data-product-option]')!.click();
     expect(element.value.boxes[0]!.items[0]).toMatchObject({ product_hs_code: '6204420000', product_hs_code_description: 'Cotton dresses' });
   });
 
@@ -153,7 +164,7 @@ describe('AfricanIES custom elements', () => {
     const search = vi.fn().mockImplementation(() => new Promise((resolve) => { resolveSearch = resolve; }));
     const element = document.createElement('africanies-shipment-builder'); element.client = fakeClient({ products: { search } }); element.value = rateRequest(); document.body.append(element);
     for (let step = 0; step < 3; step += 1) element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="next-step"]')!.click();
-    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="search-product"]')!.click();
+    const query=element.shadowRoot!.querySelector<HTMLInputElement>('[data-product-query]')!; query.value='head gear'; query.dispatchEvent(new Event('input',{bubbles:true})); await new Promise((resolve)=>setTimeout(resolve,400));
     element.client = fakeClient({ products: { search: vi.fn() } });
     resolveSearch({ success: true, status_code: 200, message: 'ok', data: [{ id: 1, hs_code: 'STALE', name: 'Stale product', active: true, deleted_at: null, created_at: '2026-01-01', updated_at: null }] });
     await nextTask();
@@ -168,14 +179,14 @@ describe('AfricanIES custom elements', () => {
     const element = document.createElement('africanies-shipment-builder'); element.client = fakeClient({ products: { search } }); element.value = draft; document.body.append(element);
     for (let step = 0; step < 3; step += 1) element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="next-step"]')!.click();
     const queries = element.shadowRoot!.querySelectorAll<HTMLInputElement>('[data-product-query]'); queries[0]!.value = 'head gear'; queries[1]!.value = 'dress';
-    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="search-product"][data-item="0"]')!.click();
+    queries[0]!.dispatchEvent(new Event('input',{bubbles:true})); await new Promise((resolve)=>setTimeout(resolve,400));
     const secondQuery = element.shadowRoot!.querySelector<HTMLInputElement>('[data-product-query][data-item="1"]')!; secondQuery.value = 'dress';
-    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="search-product"][data-item="1"]')!.click();
+    secondQuery.dispatchEvent(new Event('input',{bubbles:true})); await new Promise((resolve)=>setTimeout(resolve,400));
     resolvers.get('dress')!({ success: true, status_code: 200, message: 'ok', data: [{ id: 2, hs_code: '6204420000', name: 'Cotton dresses', active: true, deleted_at: null, created_at: '2026-01-01', updated_at: null }] });
     await nextTask();
     resolvers.get('head gear')!({ success: true, status_code: 200, message: 'ok', data: [{ id: 1, hs_code: '6506100000', name: 'Head gear', active: true, deleted_at: null, created_at: '2026-01-01', updated_at: null }] });
     await nextTask();
-    const results = element.shadowRoot!.querySelectorAll<HTMLSelectElement>('[data-product-result]');
+    const results = element.shadowRoot!.querySelectorAll<HTMLElement>('[role="listbox"]');
     expect(results[0]!.textContent).toContain('Head gear'); expect(results[0]!.textContent).not.toContain('Cotton dresses');
     expect(results[1]!.textContent).toContain('Cotton dresses'); expect(results[1]!.textContent).not.toContain('Head gear');
   });
@@ -187,7 +198,12 @@ describe('AfricanIES custom elements', () => {
     const query = element.shadowRoot!.querySelector<HTMLInputElement>('[data-product-query]')!;
     query.value = 'he'; query.dispatchEvent(new Event('input', { bubbles: true })); await new Promise((resolve) => setTimeout(resolve, 400)); expect(search).not.toHaveBeenCalled();
     query.value = 'head gear'; query.dispatchEvent(new Event('input', { bubbles: true })); await new Promise((resolve) => setTimeout(resolve, 400));
-    expect(search).toHaveBeenCalledOnce(); expect(element.shadowRoot!.querySelector<HTMLSelectElement>('[data-product-result]')!.textContent).toContain('Head gear');
+    expect(search).toHaveBeenCalledOnce(); expect(element.shadowRoot!.querySelector<HTMLElement>('[role="listbox"]')!.textContent).toContain('Head gear');
+    const refreshed = element.shadowRoot!.querySelector<HTMLInputElement>('[data-product-query]')!;
+    refreshed.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(element.value.boxes[0]!.items[0]!.product_hs_code).toBe('6506100000');
+    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="clear-product"]')!.click();
+    expect(element.value.boxes[0]!.items[0]!.product_hs_code).toBe('');
   });
 
   it('renders purchase validation issues instead of silently rejecting', async () => {

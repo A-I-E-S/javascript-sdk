@@ -12,6 +12,7 @@
       <form id="login-form" class="panel auth-card">
         <p class="eyebrow">SDK user acceptance testing</p><h1>Connect to the sandbox</h1>
         <p>Enter your Base64 API credential. It stays in page memory and is checked with a safe carrier request.</p>
+        <details class="integration-options"><summary>Choose an SDK integration style</summary><ul><li><strong>Headless APIs:</strong> host owns every screen and calls clients, checkout, and packaging services.</li><li><strong>SDK browser elements:</strong> use the provided builder, rates, and purchase elements.</li><li><strong>Custom host UI:</strong> follow this storefront while calling the same SDK APIs.</li></ul><p><a href="./manual.html">Open the host-controlled manual packaging lab</a>. Automatic configurable packaging remains the default.</p></details>
         <label>Base64 API credential<input id="encoded-key" type="password" autocomplete="off" spellcheck="false" required></label>
         <button class="primary" type="submit">Validate and enter store</button>
         <p id="login-status" class="message" role="status" aria-live="polite"></p>

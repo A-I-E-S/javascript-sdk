@@ -22,6 +22,16 @@ The credential is held in page memory only and cleared from the input after ever
 
 Both pages validate their own in-memory sandbox credential and provide Logout. They link to each other and are emitted as separate entries in the same GitHub Pages artifact.
 
+The manual lab starts with the useful `0.2.0` UAT fixture: John Doe's Isolo/Lagos sender, Jane Smith's Boston receiver, one 10 × 10 × 10 cm box with 5 kg gross weight, and two quantity-one lines—Electronics Accessories at 1.5 kg/NGN 1,500 and Smartphone Case at 0.3 kg/NGN 1,500. The old fixture's hardcoded HS value is intentionally omitted: each item must be classified through the live searchable Products API combobox. Testers may add or remove boxes and items without an SDK-imposed demo limit; each item lives in exactly one box, box indexes remain stable, and the SDK validates dimensions, quantities, unit weights, values, and gross box weight before rates.
+
+## Consumer integration choices
+
+- **Headless APIs** — use the exported client, checkout, validation, and packaging functions when the host owns all rendering (server, framework, or native shell). Automatic configurable packaging is the recommended default.
+- **SDK browser elements** — use `<africanies-shipment-builder>`, `<africanies-rate-selection>`, and `<africanies-purchase-confirmation>` when a browser host wants accessible SDK-provided workflow UI. The manual lab is a runnable shipment-builder example.
+- **Fully custom host UI** — build any storefront UI while calling the same SDK APIs. The automatic demo is a runnable example: its catalogue, cart, address, packaging display, rates, PayDemo, tracking, and documents are host-rendered.
+
+Manual packaging remains a host-application decision for merchants that already know the physical boxes. It is separate from the default automatic configurable-box workflow and is not an end-customer toggle. These demos are reference UAT surfaces, not a claim of parity with any production storefront.
+
 ## Local use
 
 Node.js 22 or newer is required.

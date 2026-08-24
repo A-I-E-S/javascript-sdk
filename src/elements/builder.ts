@@ -163,7 +163,7 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
         .summary-pair { display:grid; gap:16px; grid-template-columns:repeat(2,minmax(0,1fr)); }
         .summary-value { font-size:14px; margin:5px 0 0; }
         .combobox { position:relative; }
-        .combobox-results { background:#fff; border:1px solid var(--africanies-border); border-radius:10px; box-shadow:0 12px 28px #17243a20; list-style:none; margin:4px 0 0; max-height:220px; overflow:auto; padding:5px; position:absolute; width:100%; z-index:4; }
+        .combobox-results { background:#fff; border:1px solid var(--africanies-border); border-radius:10px; box-shadow:0 12px 28px #17243a20; left:0; list-style:none; margin:4px 0 0; max-height:220px; overflow:auto; padding:5px; position:absolute; top:100%; width:100%; z-index:8; }
         .combobox-results li { border-radius:7px; cursor:pointer; display:grid; gap:2px; padding:9px 10px; }
         .combobox-results li[aria-selected="true"] { background:#e7f8ee; }
         .combobox-results small { color:var(--africanies-muted); }
@@ -178,6 +178,7 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
         .item-table caption { font-weight:750; padding:8px; text-align:left; }
         .item-table th,.item-table td { border-bottom:1px solid var(--africanies-border); padding:10px; text-align:left; }
         dialog { background:transparent; border:0; inset:0; margin:auto; max-height:92vh; max-width:min(760px,calc(100% - 24px)); overflow:auto; padding:0; width:100%; }
+        dialog .actions { background:#fff; isolation:isolate; position:relative; z-index:7; }
         dialog::backdrop { background:#17243ab8; }
         @media(max-width:640px){.summary-pair{grid-template-columns:1fr}.item-table{display:block;overflow:auto}}
       </style><form class="shell" novalidate>

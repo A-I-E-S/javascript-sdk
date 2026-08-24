@@ -13,6 +13,8 @@ test('automatic demo exposes authenticated logout and full PayDemo context', asy
   assert.match(main, /function resetSession/);
   assert.match(main, /state\.client = null/);
   assert.match(main, /Full payment approved/);
+  assert.match(main, /event\.submitter \?\?/);
+  assert.match(main, /show\('shipping-section'\).*mountSharedRates.*error\(message\)/s);
 });
 
 test('automatic and manual packaging demos are distinct and mutually discoverable', async () => {

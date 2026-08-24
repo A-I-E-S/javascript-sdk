@@ -74,7 +74,7 @@ async function reachManualPayment(page: Page): Promise<void> {
   for (let itemIndex = 0; itemIndex < itemCount; itemIndex += 1) {
     await builder.locator('[data-action="edit-item"]').nth(itemIndex).click();
     const item = builder.locator('dialog .item'); await item.locator('[data-product-query]').fill('head gear');
-    await expect(item.locator('[data-product-option]')).toBeVisible(); await item.locator('[data-product-option]').first().click();
+    await expect(item.locator('[data-product-option]')).toBeVisible(); await item.locator('[data-product-query]').press('Enter');
     await builder.getByRole('button',{name:'Save item'}).click();
   }
   await builder.getByRole('button', { name: 'Continue' }).click();
@@ -97,6 +97,7 @@ async function selectRate(page: Page): Promise<void> {
   const card = page.locator('.rate-card').filter({ hasText: rate.name });
   await card.click();
   await expect(card.locator('input[name="shared-rate"]')).toBeChecked();
+  await expect(card.locator('.select-copy')).toHaveText('Selected'); await expect(card).toHaveAttribute('aria-label', 'Selected shipping rate');
   await expect(page.locator('.shared-rate-continue')).toBeEnabled();
 }
 
@@ -164,7 +165,7 @@ test('manual builder renders the approved preset item names', async ({ page }) =
   await expect(builder.locator('[data-field="latitude"], [data-field="longitude"]')).toHaveCount(0);
   for (let step = 0; step < 2; step += 1) await builder.getByRole('button', { name: 'Continue' }).click();
   const expected=['Head phones','Airpod'];
-  for(let index=0;index<expected.length;index+=1){await builder.locator('[data-action="edit-item"]').nth(index).click();await expect(builder.locator('[data-item-field="name"]')).toHaveValue(expected[index]!);await builder.getByRole('button',{name:'Cancel'}).click();}
+  for(let index=0;index<expected.length;index+=1){await builder.locator('[data-action="edit-item"]').nth(index).click();await expect(builder.locator('[data-item-field="name"]')).toHaveValue(expected[index]!);await builder.locator('dialog').press('Escape');await expect(builder.locator('dialog')).toHaveCount(0);}
   await builder.getByRole('button',{name:'Continue'}).click();
   await expect(builder.getByText('Ship From (Sender)',{exact:true})).toBeVisible();
   await expect(builder.getByText('Ship To (Receiver)',{exact:true})).toBeVisible();
@@ -346,7 +347,7 @@ test('a definitive 424 remains retryable but is never retried automatically', as
 });
 
 test('required receiver fields block rates before a network request', async ({ page }) => {
-  const fixture = await mockApi(page); await login(page); await classifyAndAdd(page); await page.locator('#checkout-button').click(); await page.locator('[name="country"]').fill('');
+  const fixture = await mockApi(page); await login(page); await classifyAndAdd(page); await page.locator('#checkout-button').click(); await page.locator('[name="country"]').selectOption('');
   await page.getByRole('button', { name: 'Calculate packaging and rates' }).click();
   expect(fixture.requests.filter((request) => request.url().endsWith('/shipment/rates'))).toHaveLength(0); await expect(page.locator('[name="country"]')).toBeFocused();
 });

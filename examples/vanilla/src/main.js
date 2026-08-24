@@ -119,7 +119,7 @@ $('#checkout-button').addEventListener('click', () => show('address-section'));
 document.querySelectorAll('[data-back]').forEach((button) => button.addEventListener('click', () => show(button.dataset.back)));
 
 $('#address-form').addEventListener('submit', async (event) => {
-  event.preventDefault(); const button = event.submitter; setBusy(button, true, 'Packaging and loading rates…');
+  event.preventDefault(); const button = event.submitter ?? event.currentTarget.querySelector('[type="submit"]'); setBusy(button, true, 'Packaging and loading rates…');
   try {
     const calculatePackaging = Shipping.calculatePackaging;
     if (typeof calculatePackaging !== 'function') throw new Error('This SDK build does not yet include automatic packaging. Install the expanded-stabilization build.');
@@ -135,7 +135,7 @@ $('#address-form').addEventListener('submit', async (event) => {
     state.rates = response.data; if (!Array.isArray(state.rates) || state.rates.length === 0) throw new Error('No shipping rates were returned for this cart.');
     state.quote = Shipping.createCheckoutShippingQuote(state.rateRequest, state.packaging, state.rates);
     renderRates();
-  } catch (cause) { const message=userFacingError(cause, 'Packaging or rates could not be calculated.');error(message);if(state.rateRequest){show('shipping-section');mountSharedRates($('#rates'),{error:message,onRefresh:()=>$('#address-form').requestSubmit()});} }
+  } catch (cause) { const message=userFacingError(cause, 'Packaging or rates could not be calculated.');if(state.rateRequest){show('shipping-section');mountSharedRates($('#rates'),{error:message,onRefresh:()=>$('#address-form').requestSubmit()});}error(message); }
   finally { setBusy(button, false); }
 });
 

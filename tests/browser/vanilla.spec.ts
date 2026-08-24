@@ -68,11 +68,13 @@ async function manualLogin(page: Page): Promise<void> {
 async function reachManualPayment(page: Page): Promise<void> {
   await manualLogin(page);
   const builder = page.locator('africanies-shipment-builder');
-  for (let step = 0; step < 3; step += 1) await builder.getByRole('button', { name: 'Continue' }).click();
-  const itemCount = await builder.locator('.item').count();
+  for (let step = 0; step < 2; step += 1) await builder.getByRole('button', { name: 'Continue' }).click();
+  const itemCount = await builder.locator('[data-action="edit-item"]').count();
   for (let itemIndex = 0; itemIndex < itemCount; itemIndex += 1) {
-    const item = builder.locator('.item').nth(itemIndex); await item.locator('[data-product-query]').fill('head gear');
+    await builder.locator('[data-action="edit-item"]').nth(itemIndex).click();
+    const item = builder.locator('dialog .item'); await item.locator('[data-product-query]').fill('head gear');
     await expect(item.locator('[data-product-option]')).toBeVisible(); await item.locator('[data-product-option]').first().click();
+    await builder.getByRole('button',{name:'Save item'}).click();
   }
   await builder.getByRole('button', { name: 'Continue' }).click();
   await builder.getByRole('button', { name: /Create shipment/ }).click();
@@ -156,11 +158,16 @@ test('catalog renders the approved product display names', async ({ page }) => {
 test('manual builder renders the approved preset item names', async ({ page }) => {
   await mockApi(page); await manualLogin(page);
   const builder = page.locator('africanies-shipment-builder');
-  for (let step = 0; step < 3; step += 1) await builder.getByRole('button', { name: 'Continue' }).click();
-  const names = builder.locator('[data-item-field="name"]');
-  await expect(names).toHaveCount(2);
-  await expect(names.nth(0)).toHaveValue('Head phones');
-  await expect(names.nth(1)).toHaveValue('Airpod');
+  await expect(builder.locator('.workflow-step')).toHaveCount(4);
+  await expect(builder).not.toContainText('Drop-off');
+  await expect(builder.locator('[data-field="latitude"], [data-field="longitude"]')).toHaveCount(0);
+  for (let step = 0; step < 2; step += 1) await builder.getByRole('button', { name: 'Continue' }).click();
+  const expected=['Head phones','Airpod'];
+  for(let index=0;index<expected.length;index+=1){await builder.locator('[data-action="edit-item"]').nth(index).click();await expect(builder.locator('[data-item-field="name"]')).toHaveValue(expected[index]!);await builder.getByRole('button',{name:'Cancel'}).click();}
+  await builder.getByRole('button',{name:'Continue'}).click();
+  await expect(builder.getByText('Ship From (Sender)',{exact:true})).toBeVisible();
+  await expect(builder.getByText('Ship To (Receiver)',{exact:true})).toBeVisible();
+  await expect(builder.locator('input[name="insurance"][value="0"]')).toBeChecked();
 });
 
 test('typed HS search debounces, cancels stale work, and supports keyboard classification', async ({ page }) => {
@@ -208,7 +215,7 @@ test('manual host lab completes classified boxes, rates, full PayDemo, purchase,
 test('manual host lab validates classification before requesting rates', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'chromium', 'One engine covers builder validation; custom-element behavior has its own matrix.');
   const fixture = await mockApi(page); await manualLogin(page); const builder = page.locator('africanies-shipment-builder');
-  for (let step = 0; step < 4; step += 1) await builder.getByRole('button', { name: 'Continue' }).click();
+  for (let step = 0; step < 3; step += 1) await builder.getByRole('button', { name: 'Continue' }).click();
   await builder.getByRole('button', { name: /Create shipment/ }).click(); await expect(builder.getByRole('alert')).toContainText(/HS code|required/i);
   expect(fixture.requests.filter((request) => request.url().endsWith('/shipment/rates'))).toHaveLength(0);
 });

@@ -47,6 +47,23 @@ builder.addEventListener('africanies-complete', (event) => {
 
 The builder can start empty or with consumer-supplied data. It emits `africanies-change` as its draft changes and blocks completion until required fields and mode-specific units validate. In the Items step, users search the Africanies Products API by a human-readable description and select a returned product; the component supplies that result's HS code without exposing a manual HS-code input. A host may still pre-populate an already classified item programmatically.
 
+For SFN, Stage 1 presents four steps: Sender, Receiver, Items, and Summary. The API-owned transport values remain locked to centimetres, kilograms, last-mile delivery enabled, and pickup disabled; there is no customer-facing drop-off step. Insurance is an explicit Yes/No choice in Summary and is serialized before rates are requested. Coordinates are not editable controls. Host-provided finite coordinates round-trip, an address provider may populate them, and manual addresses use `null` rather than fabricated coordinates.
+
+Country/state data and Google Places integration are optional, additive host configuration:
+
+```ts
+builder.config = {
+  countries: [{ code: 'NG', name: 'Nigeria', states: [{ code: 'LA', name: 'Lagos' }] }],
+  googlePlaces: {
+    // Supply a restricted browser key at runtime, never through a public build variable.
+    apiKey: runtimeRestrictedKey,
+    loader: async (key) => hostPlacesAdapter(key),
+  },
+};
+```
+
+Without configuration, accessible manual address entry and a small built-in country/state list remain available. A host may instead supply `loadCountries`, an already-created Places `provider`, or a loader that returns one. The SDK never places the key in shipment values, events, rendered markup, storage, or logs. Restrict browser keys by referrer and API in Google Cloud; applications that cannot safely expose a restricted browser key should inject a server-backed provider/proxy. Provider failures are announced and fall back to manual entry.
+
 ## Rate Selection
 
 ```ts

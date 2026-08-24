@@ -152,16 +152,8 @@ function validateAddresses(
     }
     if (contract === 'rate') {
       requiredString(address.address_landmark, `${root}.${role}.address_landmark`, issues);
-      if (address.longitude === null || address.longitude === undefined) {
-        issues.push({ path: `${root}.${role}.longitude`, message: 'This field is required.' });
-      } else {
-        finiteCoordinate(address.longitude, `${root}.${role}.longitude`, -180, 180, issues);
-      }
-      if (address.latitude === null || address.latitude === undefined) {
-        issues.push({ path: `${root}.${role}.latitude`, message: 'This field is required.' });
-      } else {
-        finiteCoordinate(address.latitude, `${root}.${role}.latitude`, -90, 90, issues);
-      }
+      finiteNullableCoordinate(address.longitude, `${root}.${role}.longitude`, -180, 180, issues);
+      finiteNullableCoordinate(address.latitude, `${root}.${role}.latitude`, -90, 90, issues);
       requiredString(address.google_address, `${root}.${role}.google_address`, issues);
     } else {
       for (const field of ['address_landmark', 'longitude', 'latitude', 'google_address'] as const) {
@@ -226,10 +218,8 @@ export function validateRateRequest(
       message: `${shipmentMode} shipments require pickup=${expectedPreferences.pickup}.`,
     });
   }
-  if (request.is_insured !== undefined
-    && request.is_insured !== '0'
-    && request.is_insured !== '1') {
-    issues.push({ path: 'is_insured', message: 'Use the string flag "0" or "1".' });
+  if (request.is_insured !== '0' && request.is_insured !== '1') {
+    issues.push({ path: 'is_insured', message: 'Choose Yes or No for shipment insurance.' });
   }
   if (!Array.isArray(request.boxes) || request.boxes.length === 0) {
     issues.push({ path: 'boxes', message: 'Add at least one box.' });

@@ -61,7 +61,6 @@ describe('UI contracts', () => {
     const result = validateRateRequest(request, 'SFN');
     expect(result.issues.map((issue) => issue.path)).toEqual(expect.arrayContaining([
       'addresses.sender.address_landmark',
-      'addresses.sender.longitude',
       'addresses.sender.google_address',
     ]));
   });

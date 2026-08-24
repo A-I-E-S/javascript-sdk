@@ -145,6 +145,14 @@ test('successful login hides authentication and logout returns a fresh in-memory
   expect(await page.evaluate(() => ({ local: localStorage.length, session: sessionStorage.length }))).toEqual({ local: 0, session: 0 });
 });
 
+test('catalog renders the approved product display names', async ({ page }) => {
+  await mockApi(page); await login(page);
+  const catalog = page.locator('#catalog');
+  await expect(catalog.getByRole('heading', { name: 'Safty headgear', exact: true })).toBeVisible();
+  await expect(catalog.getByRole('heading', { name: 'Handkerchiefs made of cotton', exact: true })).toBeVisible();
+  await expect(catalog.getByRole('heading', { name: 'Handbags', exact: true })).toBeVisible();
+});
+
 test('typed HS search debounces, cancels stale work, and supports keyboard classification', async ({ page }) => {
   const searchUrls: string[] = [];
   await page.route(apiPattern, async (route) => {

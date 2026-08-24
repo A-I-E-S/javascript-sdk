@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.3.0 — Unreleased
+## 0.4.0 — 2026-08-24
 
-Release candidate for the additive checkout, automatic-packaging, SDK validation, UI-parity, browser-recovery, and hosted vanilla UAT work. Package metadata now identifies `0.3.0`; publication is not implied or authorized by this entry.
+Release candidate for the additive checkout, automatic-packaging, SDK validation, UI-parity, browser-recovery, Tailwind UI build, and hosted vanilla UAT work. Package metadata now identifies `0.4.0`; publication remains a separate post-merge action and is not performed by this release-preparation change.
 
 ### Checkout and packaging
 

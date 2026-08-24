@@ -2,7 +2,7 @@
 
 Official TypeScript/JavaScript client and framework-neutral UI for AfricanIES shipping integrations.
 
-> **Release status:** `@africanies/shipping@0.2.0` is published on npm and is the immutable stabilization baseline. Its exact source commit, npm publisher identity, and publication-approval provenance have not been verified; publication of any later version still requires separate approval.
+> **Release status:** this source tree prepares `@africanies/shipping@0.4.0`; it is not published by this change. `0.2.0` remains the immutable published stabilization baseline until the separately authorized release step completes.
 
 ## Live UAT Demo
 

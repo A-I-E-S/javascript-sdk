@@ -17,8 +17,9 @@ function purchaseResult(insured: boolean, base64 = false): Record<string, unknow
   };
 }
 
-async function mockApi(page: Page, options: { authFailure?: boolean; products?: unknown[]; purchaseFailure?: boolean; purchaseApiFailure?: boolean; purchaseValidationFailure?: boolean; purchaseData?: Record<string, unknown> } = {}): Promise<ApiFixture> {
+async function mockApi(page: Page, options: { authFailure?: boolean; products?: unknown[]; ratesFailures?: number; ratesDelay?: number; purchaseFailure?: boolean; purchaseApiFailure?: boolean; purchaseValidationFailure?: boolean; purchaseData?: Record<string, unknown> } = {}): Promise<ApiFixture> {
   const fixture: ApiFixture = { purchaseCount: 0, requests: [] };
+  let remainingRateFailures=options.ratesFailures??0;
   await page.route(apiPattern, async (route) => {
     const request = route.request(); fixture.requests.push(request);
     const path = new URL(request.url()).pathname;
@@ -27,7 +28,7 @@ async function mockApi(page: Page, options: { authFailure?: boolean; products?: 
     }
     let data: unknown = [];
     if (path.includes('/product/search/')) data = options.products ?? [product];
-    if (path.endsWith('/shipment/rates')) data = [rate];
+    if (path.endsWith('/shipment/rates')) {if(options.ratesDelay)await new Promise((resolve)=>setTimeout(resolve,options.ratesDelay));if(remainingRateFailures>0){remainingRateFailures-=1;await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({success:false,status_code:503,message:'Rates temporarily unavailable',data:[]})});return;}data = [rate];}
     if (path.endsWith('/shipment/purchase')) {
       fixture.purchaseCount += 1; fixture.purchase = request.postDataJSON();
       if (options.purchaseFailure) { await route.abort('timedout'); return; }
@@ -68,19 +69,21 @@ async function manualLogin(page: Page): Promise<void> {
 async function reachManualPayment(page: Page): Promise<void> {
   await manualLogin(page);
   const builder = page.locator('africanies-shipment-builder');
-  for (let step = 0; step < 3; step += 1) await builder.getByRole('button', { name: 'Continue' }).click();
-  const itemCount = await builder.locator('.item').count();
+  for (let step = 0; step < 2; step += 1) await builder.getByRole('button', { name: 'Continue' }).click();
+  const itemCount = await builder.locator('[data-action="edit-item"]').count();
   for (let itemIndex = 0; itemIndex < itemCount; itemIndex += 1) {
-    const item = builder.locator('.item').nth(itemIndex); await item.locator('[data-product-query]').fill('head gear');
-    await expect(item.locator('[data-product-option]')).toBeVisible(); await item.locator('[data-product-option]').first().click();
+    await builder.locator('[data-action="edit-item"]').nth(itemIndex).click();
+    const item = builder.locator('dialog .item'); await item.locator('[data-product-query]').fill('head gear');
+    await expect(item.locator('[data-product-option]')).toBeVisible(); await item.locator('[data-product-query]').press('Enter');
+    await builder.getByRole('button',{name:'Save item'}).click();
   }
   await builder.getByRole('button', { name: 'Continue' }).click();
   await builder.getByRole('button', { name: /Create shipment/ }).click();
-  const rates = page.locator('africanies-rate-selection');
+  const rates = page.locator('.shared-rates-panel');
   await expect(rates.getByText(rate.name)).toBeVisible();
-  await rates.locator(`button[data-slug="${rate.slug}"]`).click();
-  await rates.getByRole('button', { name: 'Continue' }).click();
-  await expect(page.locator('.manual-payment')).toBeVisible();
+  await rates.locator('.rate-card').filter({hasText:rate.name}).click();
+  await rates.getByRole('button', { name: 'Continue to PayDemo' }).click();
+  await expect(page.locator('#manual-workspace .shared-paydemo')).toBeVisible();
 }
 
 async function classifyAndAdd(page: Page, quantity = '1'): Promise<void> {
@@ -93,8 +96,9 @@ async function classifyAndAdd(page: Page, quantity = '1'): Promise<void> {
 async function selectRate(page: Page): Promise<void> {
   const card = page.locator('.rate-card').filter({ hasText: rate.name });
   await card.click();
-  await expect(card.locator('input[name="rate"]')).toBeChecked();
-  await expect(page.locator('#rate-button')).toBeEnabled();
+  await expect(card.locator('input[name="shared-rate"]')).toBeChecked();
+  await expect(card.locator('.select-copy')).toHaveText('Selected'); await expect(card).toHaveAttribute('aria-label', 'Selected shipping rate');
+  await expect(page.locator('.shared-rate-continue')).toBeEnabled();
 }
 
 async function reachPayment(page: Page, insured = false): Promise<void> {
@@ -102,7 +106,7 @@ async function reachPayment(page: Page, insured = false): Promise<void> {
   if (insured) await page.locator('#insured').check();
   await page.getByRole('button', { name: 'Calculate packaging and rates' }).click();
   await expect(page.getByText(rate.name)).toBeVisible();
-  await selectRate(page); await page.locator('#rate-button').click();
+  await selectRate(page); await page.locator('.shared-rate-continue').click();
   await expect(page.locator('#payment-section')).toBeVisible();
 }
 
@@ -110,7 +114,7 @@ async function reachPaymentWithQuantity(page: Page, quantity: string, insured = 
   await classifyAndAdd(page, quantity); await page.locator('#checkout-button').click();
   if (insured) await page.locator('#insured').check();
   await page.getByRole('button', { name: 'Calculate packaging and rates' }).click();
-  await selectRate(page); await page.locator('#rate-button').click();
+  await selectRate(page); await page.locator('.shared-rate-continue').click();
 }
 
 test('uninsured SFN checkout preserves unit weight, selected rate, payment, tracking and URL documents', async ({ page }) => {
@@ -156,11 +160,16 @@ test('catalog renders the approved product display names', async ({ page }) => {
 test('manual builder renders the approved preset item names', async ({ page }) => {
   await mockApi(page); await manualLogin(page);
   const builder = page.locator('africanies-shipment-builder');
-  for (let step = 0; step < 3; step += 1) await builder.getByRole('button', { name: 'Continue' }).click();
-  const names = builder.locator('[data-item-field="name"]');
-  await expect(names).toHaveCount(2);
-  await expect(names.nth(0)).toHaveValue('Head phones');
-  await expect(names.nth(1)).toHaveValue('Airpod');
+  await expect(builder.locator('.workflow-step')).toHaveCount(4);
+  await expect(builder).not.toContainText('Drop-off');
+  await expect(builder.locator('[data-field="latitude"], [data-field="longitude"]')).toHaveCount(0);
+  for (let step = 0; step < 2; step += 1) await builder.getByRole('button', { name: 'Continue' }).click();
+  const expected=['Head phones','Airpod'];
+  for(let index=0;index<expected.length;index+=1){await builder.locator('[data-action="edit-item"]').nth(index).click();await expect(builder.locator('[data-item-field="name"]')).toHaveValue(expected[index]!);await builder.locator('dialog').press('Escape');await expect(builder.locator('dialog')).toHaveCount(0);}
+  await builder.getByRole('button',{name:'Continue'}).click();
+  await expect(builder.getByText('Ship From (Sender)',{exact:true})).toBeVisible();
+  await expect(builder.getByText('Ship To (Receiver)',{exact:true})).toBeVisible();
+  await expect(builder.locator('input[name="insurance"][value="0"]')).toBeChecked();
 });
 
 test('typed HS search debounces, cancels stale work, and supports keyboard classification', async ({ page }) => {
@@ -191,7 +200,7 @@ test('PayDemo review presents merchandise, selected delivery, carrier and full t
 
 test('manual host lab completes classified boxes, rates, full PayDemo, purchase, tracking and URL documents', async ({ page }) => {
   const fixture = await mockApi(page); await reachManualPayment(page);
-  await expect(page.locator('.manual-payment')).toContainText(rate.name); await expect(page.locator('.manual-payment')).toContainText('15,000');
+  await expect(page.locator('#manual-workspace .shared-paydemo')).toContainText(rate.name); await expect(page.locator('#manual-workspace .shared-paydemo')).toContainText('15,000');
   await page.locator('#manual-pay').click(); await expect(page.locator('.manual-result')).toContainText('TRACK-UAT-1');
   const paymentRecord = page.locator('.manual-result .payment-record');
   await expect(paymentRecord.getByText('PAYDEMO FULL ORDER + DELIVERY', { exact: true })).toBeVisible();
@@ -205,10 +214,37 @@ test('manual host lab completes classified boxes, rates, full PayDemo, purchase,
   expect(boxes[0]).toMatchObject({ weight: 5 }); expect(boxes[0]!.items).toHaveLength(2); expect(boxes[0]!.items[0]).toMatchObject({ weight: 1.5, quantity: 1, product_hs_code: product.hs_code });
 });
 
+test('automatic and manual checkout mount identical shared PayDemo structure', async ({page})=>{
+  await mockApi(page);await login(page);await reachPayment(page);
+  const signature=async(selector:string)=>page.locator(selector).evaluate((root)=>{const walk=(node:Element):unknown=>[node.tagName.toLowerCase(),[...node.classList].sort(),[...node.children].map((child)=>walk(child))];return walk(root);});
+  const automatic=await signature('#payment-section .shared-paydemo');
+  await reachManualPayment(page);
+  const manual=await signature('#manual-workspace .shared-paydemo');
+  expect(manual).toEqual(automatic);
+});
+
+test('automatic rates expose shared loading, error and refresh behavior',async({page},testInfo)=>{
+  test.skip(testInfo.project.name!=='chromium','One engine covers shared rate state behavior.');
+  await mockApi(page,{ratesFailures:1,ratesDelay:150});await login(page);await classifyAndAdd(page);await page.locator('#checkout-button').click();
+  await page.getByRole('button',{name:'Calculate packaging and rates'}).click();await expect(page.locator('#rates [role="status"]')).toContainText('Loading shipment carriers');
+  await expect(page.locator('#rates [role="status"]')).toContainText('Rates temporarily unavailable');await page.locator('#rates .shared-rate-refresh').click();
+  await expect(page.locator('#rates').getByText(rate.name)).toBeVisible();
+});
+
+test('manual rates expose the same shared loading, error and refresh behavior',async({page},testInfo)=>{
+  test.skip(testInfo.project.name!=='chromium','One engine covers shared rate state behavior.');
+  await mockApi(page,{ratesFailures:1,ratesDelay:150});await manualLogin(page);const builder=page.locator('africanies-shipment-builder');
+  for(let step=0;step<2;step+=1)await builder.getByRole('button',{name:'Continue'}).click();
+  const count=await builder.locator('[data-action="edit-item"]').count();for(let index=0;index<count;index+=1){await builder.locator('[data-action="edit-item"]').nth(index).click();const item=builder.locator('dialog .item');await item.locator('[data-product-query]').fill('head gear');await item.locator('[data-product-option]').first().click();await builder.getByRole('button',{name:'Save item'}).click();}
+  await builder.getByRole('button',{name:'Continue'}).click();await builder.getByRole('button',{name:/Create shipment/}).click();
+  await expect(page.locator('#manual-workspace [role="status"]')).toContainText('Loading shipment carriers');await expect(page.locator('#manual-workspace [role="status"]')).toContainText('Rates temporarily unavailable');
+  await page.locator('#manual-workspace .shared-rate-refresh').click();await expect(page.locator('#manual-workspace').getByText(rate.name)).toBeVisible();
+});
+
 test('manual host lab validates classification before requesting rates', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'chromium', 'One engine covers builder validation; custom-element behavior has its own matrix.');
   const fixture = await mockApi(page); await manualLogin(page); const builder = page.locator('africanies-shipment-builder');
-  for (let step = 0; step < 4; step += 1) await builder.getByRole('button', { name: 'Continue' }).click();
+  for (let step = 0; step < 3; step += 1) await builder.getByRole('button', { name: 'Continue' }).click();
   await builder.getByRole('button', { name: /Create shipment/ }).click(); await expect(builder.getByRole('alert')).toContainText(/HS code|required/i);
   expect(fixture.requests.filter((request) => request.url().endsWith('/shipment/rates'))).toHaveLength(0);
 });
@@ -218,6 +254,7 @@ for (const failure of ['definitive', 'uncertain'] as const) {
     test.skip(testInfo.project.name !== 'chromium', 'One engine covers purchase-state policy.');
     const fixture = await mockApi(page, failure === 'definitive' ? { purchaseValidationFailure: true } : { purchaseFailure: true }); await reachManualPayment(page);
     await page.locator('#manual-pay').click(); await expect(page.locator('#manual-error')).toContainText(failure === 'definitive' ? 'Unit weight validation failed.' : /Reconcile/);
+    await expect(page.locator('#manual-workspace .shared-payment-status')).toContainText(failure === 'definitive' ? 'Unit weight validation failed.' : /Reconcile/);
     await page.locator('#manual-pay').click();
     if (failure === 'definitive') expect(fixture.purchaseCount).toBe(2);
     else { await expect(page.locator('#manual-error')).toContainText('prior result is uncertain'); expect(fixture.purchaseCount).toBe(1); }
@@ -279,13 +316,21 @@ for (const outcome of ['pending', 'failed', 'cancelled'] as const) {
     const fixture = await mockApi(page); await login(page); await reachPayment(page);
     if (outcome === 'pending') await page.locator('#payment-outcome').evaluate((select) => select.append(new Option('Pending payment', 'pending')));
     await page.locator('#payment-outcome').selectOption(outcome); await page.locator('#pay-button').click();
-    await expect(page.locator('#app-error')).toContainText(outcome); expect(fixture.purchaseCount).toBe(0);
+    await expect(page.locator('#app-error')).toContainText(outcome); await expect(page.locator('#payment-status')).toContainText(outcome); expect(fixture.purchaseCount).toBe(0);
+  });
+}
+
+for (const outcome of ['failed','cancelled'] as const) {
+  test(`manual PayDemo ${outcome} updates the shared status without purchase`,async({page},testInfo)=>{
+    test.skip(testInfo.project.name!=='chromium','One engine covers shared decline/cancel behavior.');
+    const fixture=await mockApi(page);await reachManualPayment(page);await page.locator('#manual-payment-outcome').selectOption(outcome);await page.locator('#manual-pay').click();
+    await expect(page.locator('#manual-workspace .shared-payment-status')).toContainText(outcome);expect(fixture.purchaseCount).toBe(0);
   });
 }
 
 test('an uncertain purchase result is not automatically or manually duplicated', async ({ page }) => {
   const fixture = await mockApi(page, { purchaseFailure: true }); await login(page); await reachPayment(page); await page.locator('#pay-button').click();
-  await expect(page.locator('#app-error')).toContainText(/Network request failed|uncertain/i); await page.locator('#pay-button').click();
+  await expect(page.locator('#app-error')).toContainText(/Network request failed|uncertain/i);await expect(page.locator('#payment-status')).toContainText(/Network request failed|uncertain/i); await page.locator('#pay-button').click();
   await expect(page.locator('#app-error')).toContainText('uncertain'); expect(fixture.purchaseCount).toBe(1);
 });
 
@@ -302,7 +347,7 @@ test('a definitive 424 remains retryable but is never retried automatically', as
 });
 
 test('required receiver fields block rates before a network request', async ({ page }) => {
-  const fixture = await mockApi(page); await login(page); await classifyAndAdd(page); await page.locator('#checkout-button').click(); await page.locator('[name="country"]').fill('');
+  const fixture = await mockApi(page); await login(page); await classifyAndAdd(page); await page.locator('#checkout-button').click(); await page.locator('[name="country"]').selectOption('');
   await page.getByRole('button', { name: 'Calculate packaging and rates' }).click();
   expect(fixture.requests.filter((request) => request.url().endsWith('/shipment/rates'))).toHaveLength(0); await expect(page.locator('[name="country"]')).toBeFocused();
 });

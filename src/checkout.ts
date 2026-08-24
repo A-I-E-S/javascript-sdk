@@ -1,7 +1,7 @@
 import type { AfricaniesClient } from './client.js';
 import { AfricaniesError } from './errors.js';
 import type { PackagingResult } from './packaging.js';
-import { assertShipmentGeography } from './shipment-validation.js';
+import { assertShipmentGeography, inferShipmentMode } from './shipment-validation.js';
 import type { ApiEnvelope, ShipmentMode, ShipmentPurchaseRequest, ShipmentPurchaseResult, ShipmentRate, ShipmentRateAddresses, ShipmentRateRequest } from './types.js';
 
 const canonical = (value: unknown): string => Array.isArray(value) ? `[${value.map(canonical).join(',')}]` : value && typeof value === 'object' ? `{${Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`).join(',')}}` : JSON.stringify(value);
@@ -14,11 +14,13 @@ const deepFreeze = <T>(value: T): T => {
   return value;
 };
 
-export interface BuildRateRequestFromPackagingInput { addresses: ShipmentRateAddresses; shipmentMode: ShipmentMode; packaging: PackagingResult; isInsured?: '0' | '1' }
+export interface BuildRateRequestFromPackagingInput { addresses: ShipmentRateAddresses; shipmentMode?: ShipmentMode; packaging: PackagingResult; isInsured?: '0' | '1' }
 export function buildRateRequestFromPackaging(input: BuildRateRequestFromPackagingInput): ShipmentRateRequest {
   if (!input.packaging.valid || input.packaging.unpackedItems.length || !input.packaging.rateBoxes.length) throw new AfricaniesError('Packaging must be valid and complete before requesting rates.', { category: 'validation', data: { issues: input.packaging.issues, unpackedItems: input.packaging.unpackedItems } });
-  assertShipmentGeography(input.shipmentMode, input.addresses, 'addresses');
-  return { addresses: structuredClone(input.addresses), boxes: structuredClone(input.packaging.rateBoxes), units: input.shipmentMode === 'SFN' ? { mass: 'KG', dimension: 'cm' } : { mass: 'LBS', dimension: 'inches' }, last_mile_delivery: input.shipmentMode === 'SFN', pickup: input.shipmentMode === 'STN', ...(input.isInsured === undefined ? {} : { is_insured: input.isInsured }) };
+  const mode = inferShipmentMode(input.addresses, input.shipmentMode);
+  if (!mode) throw new AfricaniesError('Sender country is required before shipment mode can be inferred.', { category: 'validation' });
+  assertShipmentGeography(mode, input.addresses, 'addresses');
+  return { addresses: structuredClone(input.addresses), boxes: structuredClone(input.packaging.rateBoxes), units: mode === 'SFN' ? { mass: 'KG', dimension: 'cm' } : { mass: 'LBS', dimension: 'inches' }, last_mile_delivery: mode === 'SFN', pickup: mode === 'STN', ...(input.isInsured === undefined ? {} : { is_insured: input.isInsured }) };
 }
 
 export interface CheckoutShippingQuote { id: string; request: ShipmentRateRequest; packaging: PackagingResult; rates: readonly ShipmentRate[] }
@@ -52,5 +54,7 @@ export interface PaymentConfirmation { confirmed: true; reference: string; confi
 export async function purchaseAfterPayment(client: AfricaniesClient, intent: CheckoutPurchaseIntent, payment: PaymentConfirmation, signal?: AbortSignal): Promise<ApiEnvelope<ShipmentPurchaseResult>> {
   const expectedId = fingerprint({ quoteId: intent.quoteId, request: intent.request, amount: intent.amount, currency: intent.currency });
   if (intent.id !== expectedId || payment.confirmed !== true || !payment.reference?.trim() || !Number.isFinite(Date.parse(payment.confirmedAt)) || payment.intentId !== intent.id || payment.amount !== intent.amount || payment.currency !== intent.currency) throw new AfricaniesError('Payment confirmation does not match the current immutable purchase intent.', { category: 'validation' });
-  assertShipmentGeography(client.shipmentMode, intent.request.address, 'address'); return client.shipments.purchase(structuredClone(intent.request), signal);
+  const mode = inferShipmentMode(intent.request.address, client.shipmentMode);
+  if (!mode) throw new AfricaniesError('Sender country is required before shipment mode can be inferred.', { category: 'validation' });
+  assertShipmentGeography(mode, intent.request.address, 'address'); return client.shipments.purchase(structuredClone(intent.request), signal);
 }

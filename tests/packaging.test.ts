@@ -105,6 +105,13 @@ describe('automatic packaging', () => {
 });
 
 describe('checkout adapters', () => {
+  it('infers rate mode from addresses and lets them override a legacy hint', () => {
+    const packaging = calculatePackaging([item()], config);
+    expect(buildRateRequestFromPackaging({ addresses: rateRequest().addresses, packaging })).toMatchObject({ units: { mass: 'KG', dimension: 'cm' }, last_mile_delivery: true, pickup: false });
+    const addresses = structuredClone(rateRequest().addresses); addresses.sender.country='US'; addresses.receiver.country='NG';
+    expect(buildRateRequestFromPackaging({ addresses, shipmentMode: 'SFN', packaging })).toMatchObject({ units: { mass: 'LBS', dimension: 'inches' }, last_mile_delivery: false, pickup: true });
+  });
+
   it('builds the existing rate contract and returns selected shipping cost', () => {
     const packaging = calculatePackaging([item()], config);
     const request = buildRateRequestFromPackaging({ addresses: rateRequest().addresses, shipmentMode: 'SFN', packaging, isInsured: '1' });

@@ -1,7 +1,8 @@
 import * as Shipping from '@africanies/shipping/browser';
 import './styles.css';
+import { mountSharedRates, mountSharedPayDemo } from './shared-checkout-ui.js';
 import {
-  DEMO_PRODUCTS, WAREHOUSE_ADDRESS, cartLines, cartTotals, createPackagingInput,
+  DEMO_COUNTRIES, DEMO_PRODUCTS, WAREHOUSE_ADDRESS, cartLines, cartTotals, createPackagingInput,
   receiverFromForm, shippingAmount, minimumAssignedDate, payDemoResult,
 } from './demo-state.js';
 
@@ -9,6 +10,9 @@ const $ = (selector) => document.querySelector(selector);
 const money = (value, currency = 'NGN') => new Intl.NumberFormat('en-NG', { style: 'currency', currency }).format(Number(value));
 const html = (value) => String(value).replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]);
 const state = { client: null, cart: {}, classifications: {}, productSearches: {}, lines: [], packaging: null, rateRequest: null, rates: [], quote: null, selection: null, selectedRate: null, payment: null, purchaseIntent: null, externalReference: null, purchaseState: 'idle', documentUrls: [] };
+
+function populateReceiverStates(selected='') { const country=DEMO_COUNTRIES.find((entry)=>entry.code===$('#receiver-country').value); const stateSelect=$('#receiver-state'); stateSelect.innerHTML=`<option value="">Select state</option>${(country?.states??[]).map((entry)=>`<option value="${entry.code}">${html(entry.name)}</option>`).join('')}`; stateSelect.disabled=!country?.states?.length; stateSelect.value=selected; }
+function populateReceiverCountries() { const country=$('#receiver-country'); country.innerHTML=`<option value="">Select country</option>${DEMO_COUNTRIES.map((entry)=>`<option value="${entry.code}">${html(entry.name)}</option>`).join('')}`; country.value='US'; populateReceiverStates('MA'); }
 
 function error(message = '') { const node = $('#app-error'); node.textContent = message; node.hidden = !message; if (message) node.focus(); }
 function userFacingError(cause, fallback) {
@@ -97,6 +101,7 @@ $('#login-form').addEventListener('submit', async (event) => {
   state.client = null;
   status.className = 'message'; status.textContent = 'Checking credential with Africanies sandbox…'; setBusy(button, true, 'Checking…');
   try {
+    // This compulsorily-SFN demo keeps a legacy hint so the addressless credential ping carries its mode.
     const client = Shipping.createAfricaniesClient({ environment: 'test', shipmentMode: 'SFN', auth: { encodedKey } });
     const response = await client.carriers.list();
     if (!response?.success) throw new Error(response?.message || 'Credential check was not accepted.');
@@ -107,11 +112,14 @@ $('#login-form').addEventListener('submit', async (event) => {
 
 $('#logout-button').addEventListener('click', resetSession);
 
+$('#receiver-country').addEventListener('change',()=>populateReceiverStates());
+populateReceiverCountries();
+
 $('#checkout-button').addEventListener('click', () => show('address-section'));
 document.querySelectorAll('[data-back]').forEach((button) => button.addEventListener('click', () => show(button.dataset.back)));
 
 $('#address-form').addEventListener('submit', async (event) => {
-  event.preventDefault(); const button = event.submitter; setBusy(button, true, 'Packaging and loading rates…');
+  event.preventDefault(); const button = event.submitter ?? event.currentTarget.querySelector('[type="submit"]'); setBusy(button, true, 'Packaging and loading rates…');
   try {
     const calculatePackaging = Shipping.calculatePackaging;
     if (typeof calculatePackaging !== 'function') throw new Error('This SDK build does not yet include automatic packaging. Install the expanded-stabilization build.');
@@ -119,14 +127,15 @@ $('#address-form').addEventListener('submit', async (event) => {
     state.packaging = calculatePackaging(packagingInput.items, packagingInput.settings);
     const receiver = receiverFromForm(event.currentTarget);
     state.rateRequest = Shipping.buildRateRequestFromPackaging({
-      addresses: { sender: { ...WAREHOUSE_ADDRESS }, receiver }, shipmentMode: 'SFN', packaging: state.packaging,
+      addresses: { sender: { ...WAREHOUSE_ADDRESS }, receiver }, packaging: state.packaging,
       isInsured: $('#insured').checked ? '1' : '0',
     });
+    renderPackaging();show('shipping-section');mountSharedRates($('#rates'),{loading:true});
     const response = await state.client.shipments.getRates(state.rateRequest);
     state.rates = response.data; if (!Array.isArray(state.rates) || state.rates.length === 0) throw new Error('No shipping rates were returned for this cart.');
     state.quote = Shipping.createCheckoutShippingQuote(state.rateRequest, state.packaging, state.rates);
-    renderPackaging(); renderRates(); show('shipping-section');
-  } catch (cause) { error(userFacingError(cause, 'Packaging or rates could not be calculated.')); }
+    renderRates();
+  } catch (cause) { const message=userFacingError(cause, 'Packaging or rates could not be calculated.');if(state.rateRequest){show('shipping-section');mountSharedRates($('#rates'),{error:message,onRefresh:()=>$('#address-form').requestSubmit()});}error(message); }
   finally { setBusy(button, false); }
 });
 
@@ -136,29 +145,26 @@ function renderPackaging() {
 }
 
 function renderRates() {
-  state.selectedRate = null; $('#rate-button').disabled = true;
-  $('#rates').innerHTML = `<div class="rates-title"><h3>Select shipment carrier</h3><span>STEP 1/2</span></div>${state.rates.map((rate, index) => `<label class="rate-card"><input type="radio" name="rate" value="${index}"><span class="carrier-name"><i aria-hidden="true">A</i><strong>${html(rate.name)}</strong></span><span class="rate-availability"><small>Available</small><b>${html(money(rate.payment_amount, rate.others.currency))}</b></span><span class="transit"><small>Estimated transit time</small><strong>${html(rate.others.min_day)}–${html(rate.others.max_day)} business days</strong></span><span class="select-copy">Select</span></label>`).join('')}`;
-  document.querySelectorAll('input[name="rate"]').forEach((input) => input.addEventListener('change', () => { state.selectedRate = state.rates[Number(input.value)]; state.selection = Shipping.selectCheckoutRate(state.quote, state.selectedRate.slug); state.payment = null; state.purchaseIntent = null; state.externalReference = null; state.purchaseState = 'idle'; $('#rate-button').disabled = false; }));
+  state.selectedRate = null;
+  mountSharedRates($('#rates'),{rates:state.rates,onRefresh:()=>$('#address-form').requestSubmit(),onSelect:(rate)=>{state.selectedRate=rate;state.selection=Shipping.selectCheckoutRate(state.quote,rate.slug);state.payment=null;state.purchaseIntent=null;state.externalReference=null;state.purchaseState='idle';},onContinue:()=>{state.externalReference??=`PAYDEMO-${crypto.randomUUID?.()??Date.now()}`;renderOrderSummary();show('payment-section');}});
 }
 
-$('#rate-button').addEventListener('click', () => { state.externalReference ??= `PAYDEMO-${crypto.randomUUID?.() ?? Date.now()}`; renderOrderSummary(); show('payment-section'); $('#payment-outcome').focus(); });
 function renderOrderSummary() {
   const totals = cartTotals(state.lines); const shipping = shippingAmount(state.selectedRate); const currency = state.selectedRate.others.currency;
   const insurance = state.rateRequest?.is_insured === '1' ? Number(state.selectedRate.charges.insurance_cost ?? 0) : 0;
-  $('#payment-context').innerHTML = `<div><dt>Merchant</dt><dd>Africanies Demo Store</dd></div><div><dt>Order reference</dt><dd>${html(state.externalReference)}</dd></div><div><dt>Selected carrier</dt><dd>${html(state.selectedRate.name)}</dd></div><div><dt>Payment currency</dt><dd>${html(currency)}</dd></div>`;
-  $('#order-summary').innerHTML = `<div class="summary-heading"><div><p class="eyebrow">Order summary</p><h3>Full order + delivery</h3></div><span>${html(currency)}</span></div><div class="summary-row"><span>Merchandise subtotal <small>${totals.quantity} item${totals.quantity === 1 ? '' : 's'}</small></span><strong>${html(money(totals.subtotal, currency))}</strong></div><div class="summary-row"><span>Delivery <small>${html(state.selectedRate.name)}</small></span><strong>${html(money(shipping, currency))}</strong></div>${state.rateRequest?.is_insured === '1' ? `<div class="summary-note"><span>Insurance included in delivery</span><strong>${html(money(insurance, currency))}</strong></div>` : '<div class="summary-note"><span>Shipment insurance</span><strong>Not requested</strong></div>'}<div class="summary-row total"><span>Full payment total</span><strong>${html(money(totals.subtotal + shipping, currency))}</strong></div><p class="intent-note">PayDemo confirms this full total. The SDK shipping intent remains bound only to the selected delivery amount.</p>`;
-  $('#payment-status').textContent = 'No payment has been attempted.'; $('#payment-status').className = 'message';
+  mountSharedPayDemo($('#payment-section'),{reference:state.externalReference,carrier:state.selectedRate.name,merchandise:totals.subtotal,shipping,insurance,insured:state.rateRequest?.is_insured==='1',currency,onBack:()=>show('shipping-section'),onSubmit:purchaseAutomatic});
+  $('#payment-section .payment-context').id='payment-context';$('#payment-section .order-summary').id='order-summary';$('#payment-section .shared-payment-outcome').id='payment-outcome';$('#payment-section .shared-pay-button').id='pay-button';$('#payment-section .shared-payment-status').id='payment-status';
 }
 
-$('#pay-button').addEventListener('click', async (event) => {
-  const button = event.currentTarget; setBusy(button, true, 'Processing PayDemo…'); error();
-  $('#payment-status').textContent = 'PayDemo is simulating the full order and delivery payment…'; $('#payment-status').className = 'message processing';
+async function purchaseAutomatic({outcome,button,status}) {
+  setBusy(button, true, 'Processing PayDemo…'); error();
+  status.textContent = 'PayDemo is simulating the full order and delivery payment…'; status.className = 'message shared-payment-status processing';
   try {
     if (state.purchaseState === 'uncertain') throw new Error('The previous purchase result is uncertain. Reconcile the existing external reference before retrying.');
     const totals = cartTotals(state.lines); const orderAmount = totals.subtotal + state.selection.shippingCost;
-    state.payment = payDemoResult($('#payment-outcome').value, { amount: orderAmount, currency: state.selection.currency });
+    state.payment = payDemoResult(outcome, { amount: orderAmount, currency: state.selection.currency });
     if (!state.payment.confirmed) throw new Error(`PayDemo payment was ${state.payment.status}. The shipment was not purchased.`);
-    $('#payment-status').textContent = `Full payment approved · ${state.payment.id} · ${money(state.payment.amount, state.payment.currency)}`; $('#payment-status').className = 'message success-message';
+    status.textContent = `Full payment approved · ${state.payment.id} · ${money(state.payment.amount, state.payment.currency)}`; status.className = 'message shared-payment-status success-message';
     const prepared = Shipping.preparePurchaseRequest(state.rateRequest, {
       assignedDate: minimumAssignedDate(), externalReference: state.externalReference ??= `PAYDEMO-${crypto.randomUUID?.() ?? Date.now()}`,
       rate: state.selectedRate, shipmentMethodSlug: state.selectedRate.slug, fileIsUrl: 1,
@@ -175,10 +181,10 @@ $('#pay-button').addEventListener('click', async (event) => {
     if (state.purchaseState === 'submitting') state.purchaseState = isDefinitivePurchaseFailure(cause) ? 'failed' : 'uncertain';
     const reconciliation = state.purchaseState === 'uncertain' ? ` The result is uncertain. Reconcile external reference ${state.externalReference} before retrying.` : '';
     const message = `${cause instanceof Error ? cause.message : 'Payment or shipment purchase failed.'}${reconciliation}`;
-    $('#payment-status').textContent = message; $('#payment-status').className = 'message failure'; error(message);
+    status.textContent = message; status.className = 'message shared-payment-status failure'; error(message);
   }
   finally { setBusy(button, false); }
-});
+}
 
 function isDefinitivePurchaseFailure(cause) {
   if (!(cause instanceof Shipping.AfricaniesError)) return false;

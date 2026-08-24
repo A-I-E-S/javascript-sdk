@@ -6,7 +6,9 @@ const forbidden = [
   'VITE_AFRICANIES_ENCODED_KEY',
   'YOUR_BASE64_ENCODED_TEST_KEY',
   'dGVzdDpjcmVkZW50aWFs',
+  'VITE_GOOGLE_MAPS_API_KEY',
 ];
+const forbiddenPatterns = [/AIza[0-9A-Za-z_-]{35}/g];
 const configuredBase = process.env.PAGES_BASE_PATH?.trim() ?? '';
 const expectedBase = configuredBase === '' || configuredBase === '/'
   ? '/'
@@ -46,6 +48,10 @@ for (const path of await files(root.pathname)) {
   const text = content.toString('utf8');
   for (const secret of forbidden) {
     if (text.includes(secret)) throw new Error(`Pages artifact ${path} contains forbidden credential material: ${secret}.`);
+  }
+  for (const pattern of forbiddenPatterns) {
+    pattern.lastIndex = 0;
+    if (pattern.test(text)) throw new Error(`Pages artifact ${path} contains a Google browser-key-shaped value.`);
   }
 }
 

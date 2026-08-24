@@ -26,7 +26,6 @@ import { createAfricaniesClient } from '@africanies/shipping';
 
 const client = createAfricaniesClient({
   environment: 'test',
-  shipmentMode: 'SFN',
   auth: { encodedKey: 'BASE64_PUBLIC_KEY_COLON_PRIVATE_KEY' },
 });
 
@@ -34,6 +33,8 @@ const rates = await client.shipments.getRates(rateRequest);
 ```
 
 `test` is the default environment and uses `https://api-sandbox.africaniestest.com`. `live` uses `https://api.africanies.com` and must be selected explicitly.
+
+Shipment direction is inferred per request. A Nigerian sender means SFN; a populated non-Nigerian sender means STN, which requires a Nigerian receiver. `shipmentMode` remains an optional legacy hint for an incomplete draft, but populated addresses are authoritative.
 
 Authentication can be provided as an already encoded API key or as raw keys:
 

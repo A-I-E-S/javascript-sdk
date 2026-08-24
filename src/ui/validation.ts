@@ -7,7 +7,7 @@ import type {
   ShipmentRateDraft,
   ShipmentRateRequest,
 } from '../types.js';
-import { shipmentGeographyIssues } from '../shipment-validation.js';
+import { inferShipmentMode, shipmentGeographyIssues } from '../shipment-validation.js';
 
 export interface ValidationIssue {
   path: string;
@@ -20,11 +20,12 @@ export interface ValidationResult {
 }
 
 export function validateShipmentGeography(
-  shipmentMode: ShipmentMode,
+  shipmentMode: ShipmentMode | undefined,
   addresses: ShipmentRateDraft['addresses'] | ShipmentRateRequest['addresses'] | ShipmentPurchaseRequest['address'],
   root: 'addresses' | 'address' = 'addresses',
 ): ValidationIssue[] {
-  return shipmentGeographyIssues(shipmentMode, addresses, root);
+  const mode = inferShipmentMode(addresses, shipmentMode);
+  return mode ? shipmentGeographyIssues(mode, addresses, root) : [];
 }
 
 function requiredString(value: unknown, path: string, issues: ValidationIssue[]): void {
@@ -152,16 +153,8 @@ function validateAddresses(
     }
     if (contract === 'rate') {
       requiredString(address.address_landmark, `${root}.${role}.address_landmark`, issues);
-      if (address.longitude === null || address.longitude === undefined) {
-        issues.push({ path: `${root}.${role}.longitude`, message: 'This field is required.' });
-      } else {
-        finiteCoordinate(address.longitude, `${root}.${role}.longitude`, -180, 180, issues);
-      }
-      if (address.latitude === null || address.latitude === undefined) {
-        issues.push({ path: `${root}.${role}.latitude`, message: 'This field is required.' });
-      } else {
-        finiteCoordinate(address.latitude, `${root}.${role}.latitude`, -90, 90, issues);
-      }
+      finiteNullableCoordinate(address.longitude, `${root}.${role}.longitude`, -180, 180, issues);
+      finiteNullableCoordinate(address.latitude, `${root}.${role}.latitude`, -90, 90, issues);
       requiredString(address.google_address, `${root}.${role}.google_address`, issues);
     } else {
       for (const field of ['address_landmark', 'longitude', 'latitude', 'google_address'] as const) {
@@ -205,30 +198,29 @@ export function validateShipmentUnits(
 
 export function validateRateRequest(
   request: ShipmentRateRequest | ShipmentRateDraft,
-  shipmentMode: ShipmentMode,
+  shipmentMode?: ShipmentMode,
 ): ValidationResult {
   const issues: ValidationIssue[] = [];
   validateAddresses(request.addresses, 'addresses', issues, 'rate');
+  shipmentMode = inferShipmentMode(request.addresses, shipmentMode);
   issues.push(...validateShipmentGeography(shipmentMode, request.addresses, 'addresses'));
-  issues.push(...validateShipmentUnits(request.units, shipmentMode));
+  if (shipmentMode) issues.push(...validateShipmentUnits(request.units, shipmentMode));
   const expectedPreferences = shipmentMode === 'SFN'
     ? { lastMileDelivery: true, pickup: false }
     : { lastMileDelivery: false, pickup: true };
-  if (request.last_mile_delivery !== expectedPreferences.lastMileDelivery) {
+  if (shipmentMode && request.last_mile_delivery !== expectedPreferences.lastMileDelivery) {
     issues.push({
       path: 'last_mile_delivery',
       message: `${shipmentMode} shipments require last_mile_delivery=${expectedPreferences.lastMileDelivery}.`,
     });
   }
-  if (request.pickup !== expectedPreferences.pickup) {
+  if (shipmentMode && request.pickup !== expectedPreferences.pickup) {
     issues.push({
       path: 'pickup',
       message: `${shipmentMode} shipments require pickup=${expectedPreferences.pickup}.`,
     });
   }
-  if (request.is_insured !== undefined
-    && request.is_insured !== '0'
-    && request.is_insured !== '1') {
+  if (request.is_insured !== undefined && request.is_insured !== '0' && request.is_insured !== '1') {
     issues.push({ path: 'is_insured', message: 'Use the string flag "0" or "1".' });
   }
   if (!Array.isArray(request.boxes) || request.boxes.length === 0) {
@@ -299,15 +291,16 @@ export function completeRateRequest(draft: ShipmentRateDraft): ShipmentRateReque
 
 export function validatePurchaseRequest(
   request: ShipmentPurchaseRequest,
-  shipmentMode: ShipmentMode,
+  shipmentMode?: ShipmentMode,
   referenceDate = new Date(),
 ): ValidationResult {
   const issues: ValidationIssue[] = [];
   validateAddresses(request.address, 'address', issues, 'purchase');
+  shipmentMode = inferShipmentMode(request.address, shipmentMode);
   issues.push(...validateShipmentGeography(shipmentMode, request.address, 'address'));
-  issues.push(...validateShipmentUnits(request.units, shipmentMode));
+  if (shipmentMode) issues.push(...validateShipmentUnits(request.units, shipmentMode));
   const expectedCurrency = shipmentMode === 'SFN' ? 'NGN' : 'USD';
-  if (request.currency !== expectedCurrency) {
+  if (shipmentMode && request.currency !== expectedCurrency) {
     issues.push({ path: 'currency', message: `${shipmentMode} purchases require ${expectedCurrency}.` });
   }
   validateAssignedDate(request.assigned_date, referenceDate, issues);
@@ -374,7 +367,11 @@ export function preparePurchaseRequest(
   options: PurchasePreparationOptions,
 ): PurchasePreparationResult {
   const issues: ValidationIssue[] = [];
-  const shipmentMode: ShipmentMode = rateRequest.units.mass === 'KG' ? 'SFN' : 'STN';
+  const shipmentMode = inferShipmentMode(rateRequest.addresses);
+  if (!shipmentMode) {
+    const validation = validateRateRequest(rateRequest, undefined);
+    return { success: false, issues: validation.issues };
+  }
   const expectedCurrency: ShipmentCurrency = shipmentMode === 'SFN' ? 'NGN' : 'USD';
   const rateValidation = validateRateRequest(rateRequest, shipmentMode);
   issues.push(...rateValidation.issues);

@@ -5,14 +5,16 @@ import { readFile } from 'node:fs/promises';
 const source = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
 test('automatic demo exposes authenticated logout and full PayDemo context', async () => {
-  const [page, main] = await Promise.all([source('index.html'), source('src/main.js')]);
+  const [page, main, shared] = await Promise.all([source('index.html'), source('src/main.js'), source('src/shared-checkout-ui.js')]);
   assert.match(page, /id="authenticated-actions"[^>]*hidden/);
   assert.match(page, /id="logout-button"/);
-  assert.match(page, /Secure fake gateway/);
-  assert.match(page, /id="payment-context"/);
+  assert.match(shared, /Secure fake gateway/);
+  assert.match(shared, /payment-context/);
   assert.match(main, /function resetSession/);
   assert.match(main, /state\.client = null/);
   assert.match(main, /Full payment approved/);
+  assert.match(main, /event\.submitter \?\?/);
+  assert.match(main, /show\('shipping-section'\).*mountSharedRates.*error\(message\)/s);
 });
 
 test('automatic and manual packaging demos are distinct and mutually discoverable', async () => {
@@ -21,6 +23,24 @@ test('automatic and manual packaging demos are distinct and mutually discoverabl
   assert.match(manual, /href="\.\/"/);
   assert.match(manual, /Integrating-application choice/);
   assert.match(config, /manual:\s*fileURLToPath/);
+});
+
+test('automatic and manual checkout use one shared rates and PayDemo renderer', async () => {
+  const [automatic,manual,shared]=await Promise.all([source('src/main.js'),source('src/manual.js'),source('src/shared-checkout-ui.js')]);
+  for(const entry of [automatic,manual]){assert.match(entry,/mountSharedRates/);assert.match(entry,/mountSharedPayDemo/);}
+  assert.match(shared,/class="shared-rates-panel"/);assert.match(shared,/class="shared-paydemo"/);
+  assert.match(shared,/africanies-rate-selected/);assert.match(shared,/africanies-complete/);
+  assert.match(shared,/Loading shipment carriers/);assert.match(shared,/No shipping rates were returned/);
+  assert.match(shared,/shared-rate-refresh/);assert.match(manual,/error:message,onRefresh:showRates/);
+  assert.match(shared,/active\?'Selected':'Select'/); assert.match(shared,/Selected shipping rate/);
+});
+
+test('automatic delivery uses dependent country and state selects', async () => {
+  const [page,main]=await Promise.all([source('index.html'),source('src/main.js')]);
+  assert.match(page,/id="receiver-country"[^>]*name="country"/); assert.match(page,/id="receiver-state"[^>]*name="state"/);
+  assert.match(main,/receiver-country.*change/); assert.match(main,/populateReceiverStates\(\)/);
+  assert.match(main,/value="">Select country/);
+  assert.match(main,/shipmentMode:\s*'SFN'.*carriers\.list/s);
 });
 
 test('manual entry explicitly registers SDK browser elements for production bundles', async () => {

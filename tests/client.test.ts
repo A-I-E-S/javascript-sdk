@@ -14,6 +14,29 @@ function recordingTransport() {
 }
 
 describe('Africanies client resources', () => {
+  it('infers shipment mode per request and lets addresses override a legacy mode', async () => {
+    const recorded = recordingTransport();
+    const client = createAfricaniesClient({ shipmentMode: 'SFN', transport: recorded.transport });
+    const request = rateRequest();
+    request.addresses.sender.country = 'US'; request.addresses.receiver.country = 'NG';
+    request.units = { mass: 'LBS', dimension: 'inches' }; request.last_mile_delivery = false; request.pickup = true;
+    await client.shipments.getRates(request);
+    expect(recorded.requests[0]?.shipmentMode).toBe('STN');
+    const purchase = purchaseRequest(); purchase.address.sender.country='US'; purchase.address.receiver.country='NG';
+    purchase.units={mass:'LBS',dimension:'inches'}; purchase.currency='USD';
+    await client.shipments.purchase(purchase);
+    expect(recorded.requests[1]?.shipmentMode).toBe('STN');
+  });
+
+  it('does not require shipmentMode and validates a blank sender country', async () => {
+    const recorded = recordingTransport();
+    const client = createAfricaniesClient({ transport: recorded.transport });
+    expect(client.shipmentMode).toBeUndefined();
+    const request = rateRequest(); request.addresses.sender.country = '';
+    await expect(client.shipments.getRates(request)).rejects.toMatchObject({ category: 'validation', data: expect.arrayContaining([expect.objectContaining({ path: 'addresses.sender.country' })]) });
+    expect(recorded.requests).toHaveLength(0);
+  });
+
   it('uses test by default and builds exact resource paths', async () => {
     const { requests, transport } = recordingTransport();
     const client = createAfricaniesClient({ shipmentMode: 'SFN', transport });
@@ -44,7 +67,7 @@ describe('Africanies client resources', () => {
     expect(sfn.requests).toHaveLength(0);
     const stn = recordingTransport();
     const stnClient = createAfricaniesClient({ shipmentMode: 'STN', transport: stn.transport });
-    const invalidStn = rateRequest(); invalidStn.addresses.receiver.country = 'US';
+    const invalidStn = rateRequest(); invalidStn.addresses.sender.country = 'US'; invalidStn.addresses.receiver.country = 'US';
     await expect(stnClient.shipments.getRates(invalidStn)).rejects.toMatchObject({ category: 'validation' });
     expect(stn.requests).toHaveLength(0);
     const invalidPurchase = purchaseRequest(); invalidPurchase.address.sender.country = 'US';

@@ -14,14 +14,18 @@
 
 | Exports | Example |
 |---|---|
-| `createAfricaniesClient`, `AFRICANIES_ENVIRONMENTS`, `resolveAuthorization` | [resources](../examples/headless-node/resources.mjs) |
+| `createAfricaniesClient`, `resolveAuthorization` | [resources](../examples/headless-node/resources.mjs) |
+| `AFRICANIES_ENVIRONMENTS` | [controllers and contracts](../examples/headless-node/controllers-and-contracts.mjs) |
 | `createFetchTransport` | [transport and upload](../examples/headless-node/transport-and-upload.mjs) |
 | `AfricaniesError`, `categoryForStatus`, `redactUrl` | [validation/errors](../examples/headless-node/validation-and-errors.mjs) |
-| `inferShipmentMode`, `isNigeriaCountry`, `shipmentGeographyIssues`, `assertShipmentGeography`, `shipmentRequestIssues`, `assertShipmentRequest` | [validation/errors](../examples/headless-node/validation-and-errors.mjs) |
+| `inferShipmentMode`, `isNigeriaCountry`, `shipmentGeographyIssues`, `assertShipmentGeography`, `shipmentRequestIssues` | [validation/errors](../examples/headless-node/validation-and-errors.mjs) |
+| `assertShipmentRequest` | [controllers and contracts](../examples/headless-node/controllers-and-contracts.mjs) |
 | `calculatePackaging` | [automatic](../examples/headless-node/automatic-checkout.mjs), [manual](../examples/headless-node/manual-packaging.mjs) |
 | `buildRateRequestFromPackaging`, `createCheckoutShippingQuote`, `selectCheckoutRate`, `createCheckoutPurchaseIntent`, `purchaseAfterPayment` | [automatic checkout](../examples/headless-node/automatic-checkout.mjs) |
-| `completeRateRequest`, `validateRateRequest`, `validatePurchaseRequest`, `validateShipmentGeography`, `validateShipmentUnits`, `preparePurchaseRequest` | [validation/errors](../examples/headless-node/validation-and-errors.mjs), [automatic checkout](../examples/headless-node/automatic-checkout.mjs) |
-| `ShipmentBuilderController`, `RateSelectionController`, `PurchaseController`, `UploadController` | [controller usage](./ui.md#controller-only-usage) |
+| `validateRateRequest`, `validateShipmentGeography`, `validateShipmentUnits` | [validation/errors](../examples/headless-node/validation-and-errors.mjs) |
+| `completeRateRequest`, `validatePurchaseRequest` | [controllers and contracts](../examples/headless-node/controllers-and-contracts.mjs) |
+| `preparePurchaseRequest` | [automatic checkout](../examples/headless-node/automatic-checkout.mjs) |
+| `ShipmentBuilderController`, `RateSelectionController`, `PurchaseController`, `UploadController` | [controllers and contracts](../examples/headless-node/controllers-and-contracts.mjs) |
 | `AfricaniesElement`, `AfricaniesShipmentBuilderElement`, `AfricaniesRateSelectionElement`, `AfricaniesPurchaseConfirmationElement`, `defineAfricaniesElements` | [standalone elements](../examples/elements-standalone/) |
 
 ## Client resource coverage

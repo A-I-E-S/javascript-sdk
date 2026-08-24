@@ -59,6 +59,10 @@ async function manualLogin(page: Page): Promise<void> {
   await expect(page.locator('#manual-app')).toBeVisible();
   await expect(page.locator('#manual-login')).toBeHidden();
   await expect(page.locator('#manual-key')).toHaveValue('');
+  const builder = page.locator('africanies-shipment-builder');
+  await expect(builder.getByRole('heading', { name: 'Create shipment' })).toBeVisible();
+  await expect(builder.getByRole('button', { name: 'Continue' })).toBeVisible();
+  expect(await builder.evaluate((element) => element.constructor === customElements.get('africanies-shipment-builder') && element.shadowRoot !== null)).toBe(true);
 }
 
 async function reachManualPayment(page: Page): Promise<void> {
@@ -294,6 +298,7 @@ test('non-native whitespace address validation surfaces an SDK error before rate
 
 test('built Pages artifact loads and navigates both demo routes without asset or console failures', async ({ page }) => {
   const failures: string[] = []; const consoleErrors: string[] = [];
+  await mockApi(page);
   page.on('requestfailed', (request) => failures.push(`${request.method()} ${request.url()}`));
   page.on('response', (response) => { if (response.status() >= 400) failures.push(`${response.status()} ${response.url()}`); });
   page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
@@ -301,6 +306,10 @@ test('built Pages artifact loads and navigates both demo routes without asset or
   await expect(page).toHaveTitle(/Africanies Store/); await expect(page.locator('.test-badge')).toContainText('SANDBOX · SFN');
   await expect(page.locator('#encoded-key')).toBeVisible(); await page.getByRole('link', { name: 'Manual packaging lab' }).click();
   await expect(page).toHaveURL(/manual\.html$/); await expect(page.locator('#manual-key')).toBeVisible(); await expect(page).toHaveTitle(/Manual Packaging Lab/);
+  await page.locator('#manual-key').fill(credential); await page.getByRole('button', { name: 'Validate and open lab' }).click();
+  const builtBuilder = page.locator('africanies-shipment-builder');
+  await expect(builtBuilder.getByRole('heading', { name: 'Create shipment' })).toBeVisible(); await expect(builtBuilder.getByRole('button', { name: 'Continue' })).toBeVisible();
+  expect(await builtBuilder.evaluate((element) => element.constructor === customElements.get('africanies-shipment-builder') && element.shadowRoot !== null)).toBe(true);
   await page.getByRole('link', { name: 'Automatic checkout' }).click(); await expect(page.locator('#encoded-key')).toBeVisible();
   expect(failures).toEqual([]); expect(consoleErrors).toEqual([]);
 });

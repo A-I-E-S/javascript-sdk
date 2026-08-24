@@ -23,6 +23,11 @@ test('automatic and manual packaging demos are distinct and mutually discoverabl
   assert.match(config, /manual:\s*fileURLToPath/);
 });
 
+test('manual entry explicitly registers SDK browser elements for production bundles', async () => {
+  const manual = await source('src/manual.js');
+  assert.match(manual, /Shipping\.defineAfricaniesElements\(\)/);
+});
+
 test('product classification supports debounced typed search and cancellation', async () => {
   const [page, main] = await Promise.all([source('index.html'), source('src/main.js')]);
   assert.match(main, /scheduleProductSearch\(input\.dataset\.productSearch\)/);

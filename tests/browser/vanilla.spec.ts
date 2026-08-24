@@ -2,7 +2,7 @@ import { expect, test, type Page, type Request } from '@playwright/test';
 
 const apiPattern = 'https://api-sandbox.africaniestest.com/api/v1/**';
 const credential = 'dGVzdDpjcmVkZW50aWFs';
-const product = { id: 1, hs_code: '6506100000', name: 'Protective head gear', active: true, deleted_at: null, created_at: '2026-01-01', updated_at: null };
+const product = { id: 1, hs_code: '6506100000', name: 'Safty headgear', active: true, deleted_at: null, created_at: '2026-01-01', updated_at: null };
 const rate = { name: 'Africanies Air Express', slug: 'air-sfn', charges: { shipment_cost: 12000, insurance_cost: 0, pickup_cost: 0, last_mile_delivery_cost: 0 }, total_amount: 12000, discount_amount: 0, payment_amount: 12000, total_item_value: 18500, others: { min_day: '3', max_day: '5', currency: 'NGN' }, mode: 'sfn' };
 const envelope = (data: unknown, success = true, message = 'ok') => ({ success, status_code: success ? 200 : 401, message, data });
 

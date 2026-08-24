@@ -147,7 +147,8 @@ test('typed HS search debounces, cancels stale work, and supports keyboard class
   await login(page); const input = page.locator('[data-product-search="headgear"]');
   await input.fill('hel'); await page.waitForTimeout(200); expect(searchUrls).toHaveLength(0);
   await input.fill('helmet'); await page.waitForTimeout(100); await input.fill('head gear');
-  const select = page.locator('[data-product-results="headgear"]'); await expect(select).toBeVisible(); expect(searchUrls).toHaveLength(1); expect(decodeURIComponent(searchUrls[0]!)).toContain('/product/search/head gear'); await expect(select).toContainText(product.name);
+  await expect.poll(() => searchUrls.map((url) => decodeURIComponent(url))).toEqual([expect.stringContaining('/product/search/head gear')]);
+  const select = page.locator('[data-product-results="headgear"]'); await expect(page.locator('[data-product-status="headgear"]')).toContainText('1 matching classifications found.'); await expect(select).toBeVisible(); await expect(select).toContainText(product.name);
   await page.locator('[data-product="headgear"].quantity').fill('1'); await select.focus(); await select.press('ArrowDown'); await select.press('Enter');
   await expect(page.locator('[data-product-status="headgear"]')).toContainText(`HS ${product.hs_code}`); await expect(page.locator('#checkout-button')).toBeEnabled();
 });

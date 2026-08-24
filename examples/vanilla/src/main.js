@@ -46,7 +46,7 @@ function renderCatalog() {
     updateCheckoutState();
   }));
   document.querySelectorAll('.search-product').forEach((button) => button.addEventListener('click', () => startProductSearch(button.dataset.product, button)));
-  document.querySelectorAll('[data-product-search]').forEach((input) => input.addEventListener('input', () => scheduleProductSearch(input.dataset.product)));
+  document.querySelectorAll('[data-product-search]').forEach((input) => input.addEventListener('input', () => scheduleProductSearch(input.dataset.productSearch)));
   document.querySelectorAll('[data-product-results]').forEach((select) => select.addEventListener('change', () => {
     const option = select.selectedOptions[0]; if (!option?.value) return;
     state.classifications[select.dataset.productResults] = { hs_code: option.value, name: option.textContent };
@@ -73,7 +73,6 @@ function scheduleProductSearch(productId) {
   if (query.length < 3) { status.textContent = 'Type at least 3 characters to search.'; return; }
   status.textContent = 'Waiting to search…';
   const timer = setTimeout(() => {
-    if (state.productSearches[productId]?.timer !== timer) return;
     delete state.productSearches[productId]; void startProductSearch(productId);
   }, 350); state.productSearches[productId] = { timer };
 }

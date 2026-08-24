@@ -2,7 +2,26 @@
 
 ## 0.3.0 — Unreleased
 
-Candidate version selected for the narrow stabilization changes. The package version remains `0.2.0`, and no publication is implied or authorized by this entry.
+Release candidate for the additive checkout, automatic-packaging, SDK validation, UI-parity, browser-recovery, and hosted vanilla UAT work. Package metadata now identifies `0.3.0`; publication is not implied or authorized by this entry.
+
+### Checkout and packaging
+
+- Added host-selected automatic packaging with configurable per-axis protective allowance, box catalogues, rotation, maximum gross weight, deterministic multi-box placement, and a detailed packaging breakdown.
+- Preserved manual host-supplied boxes as an explicit compatible mode.
+- Item `weight` is validated and transmitted as unit weight; line and box checks derive physical content weight as `quantity × unit weight` to prevent avoidable `424` responses.
+- Added quote-bound rate selection and immutable purchase intents that bind host payment confirmation to the selected shipping amount, currency, rate, and shipment request without taking ownership of merchandise payment.
+
+### Shipment contracts
+
+- SDK rate and purchase boundaries now enforce SFN Nigerian-sender and STN Nigerian-receiver geography before network requests.
+- Added strict address, mode/unit, box, item, quantity, unit-weight, currency, insurance, and document-format validation for headless and SDK UI flows.
+- Purchase preparation preserves optional `is_insured: '0' | '1'`; omitted or zero `file_is_url` retains Base64 document semantics while `file_is_url: 1` requests document URLs.
+
+### UI and UAT demo
+
+- Added Products API-backed human-readable product search and HS-code selection, explicit unit-weight guidance, expanded review/rate/purchase presentation, and responsive/accessibility refinements.
+- Reworked the vanilla example into an SFN-only mini-commerce UAT flow with a Lagos warehouse sender, cart, receiver address, automatic packaging, rates, PayDemo gate, tracking, and returned documents.
+- Added GitHub Pages build/deployment safeguards and expanded Playwright coverage across desktop and mobile browser projects.
 
 ### Reliability and security
 

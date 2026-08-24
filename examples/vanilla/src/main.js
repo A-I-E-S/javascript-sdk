@@ -1,5 +1,5 @@
 import * as Shipping from '@africanies/shipping/browser';
-import './styles.css';
+import './tailwind.css';
 import { mountSharedRates, mountSharedPayDemo } from './shared-checkout-ui.js';
 import {
   DEMO_COUNTRIES, DEMO_PRODUCTS, WAREHOUSE_ADDRESS, cartLines, cartTotals, createPackagingInput,

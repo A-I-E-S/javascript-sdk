@@ -1,5 +1,5 @@
 import * as Shipping from '@africanies/shipping/browser';
-import './styles.css';
+import './tailwind.css';
 import { WAREHOUSE_ADDRESS, minimumAssignedDate, payDemoResult } from './demo-state.js';
 import { mountSharedRates, mountSharedPayDemo } from './shared-checkout-ui.js';
 

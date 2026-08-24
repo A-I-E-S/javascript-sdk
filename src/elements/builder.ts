@@ -2,7 +2,7 @@ import type { AfricaniesClient } from '../client.js';
 import type { ProductHsCode, RateBoxDraft, RateItemDraft, ShipmentRateDraft, ShipmentRateDraftAddress, ShipmentUnits } from '../types.js';
 import { completeRateRequest, validateRateRequest, type ValidationIssue } from '../ui/validation.js';
 import { inferShipmentMode } from '../shipment-validation.js';
-import { AfricaniesElement, escapeHtml, sharedStyles, testModeMarkup } from './base.js';
+import { AfricaniesElement, escapeHtml, testModeMarkup } from './base.js';
 
 const addressFields: Array<[keyof ShipmentRateDraftAddress, string, string]> = [
   ['first_name', 'First name', 'text'],
@@ -153,38 +153,7 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
     if (!this.#value) this.#value = defaultValue(this.legacyMode() ?? 'SFN');
     const value = this.#value;
     this.root.innerHTML = `
-      <style>${sharedStyles}
-        .section-title { align-items: center; display: flex; justify-content: space-between; }
-        .box { border:1px solid var(--africanies-border); border-top:3px solid var(--africanies-mode); }
-        .item { background: var(--africanies-surface); border-radius: 10px; padding: 14px; }
-        .issue-list { margin: 0; padding-left: 20px; }
-        .field-error { color: var(--africanies-danger); font-size: 12px; font-weight: 650; }
-        .panel-heading { margin-bottom:20px; }
-        .summary-pair { display:grid; gap:16px; grid-template-columns:repeat(2,minmax(0,1fr)); }
-        .summary-value { font-size:14px; margin:5px 0 0; }
-        .combobox { position:relative; }
-        .combobox-results { background:#fff; border:1px solid var(--africanies-border); border-radius:10px; box-shadow:0 12px 28px #17243a20; left:0; list-style:none; margin:4px 0 0; max-height:220px; overflow:auto; padding:5px; position:absolute; top:100%; width:100%; z-index:8; }
-        .combobox-results li { border-radius:7px; cursor:pointer; display:grid; gap:2px; padding:9px 10px; }
-        .combobox-results li[aria-selected="true"] { background:#e7f8ee; }
-        .combobox-results small { color:var(--africanies-muted); }
-        .selected-product { align-items:center; background:#edf8f1; border-radius:8px; display:flex; gap:8px; justify-content:space-between; margin-top:8px; padding:9px; }
-        .address-toggle { align-items:center; display:flex; gap:8px; }
-        .address-toggle input { min-height:22px; width:22px; }
-        .summary-list { display:grid; gap:6px; margin:12px 0 0; }
-        .summary-list div { display:flex; gap:12px; justify-content:space-between; }
-        .summary-list dt { color:var(--africanies-muted); }
-        .summary-list dd { margin:0; text-align:right; }
-        .item-table { border-collapse:collapse; margin-top:12px; width:100%; }
-        .item-table caption { font-weight:750; padding:8px; text-align:left; }
-        .item-table th,.item-table td { border-bottom:1px solid var(--africanies-border); padding:10px; text-align:left; }
-        details.card { max-width:100%; overflow-x:auto; }
-        form.shell > .actions { background:var(--africanies-page); isolation:isolate; position:relative; z-index:9; }
-        dialog { background:transparent; border:0; inset:0; margin:auto; max-height:92vh; max-width:min(760px,calc(100% - 24px)); overflow:hidden; padding:0; width:100%; }
-        dialog > .card { max-height:92vh; overflow:auto; overscroll-behavior:contain; }
-        dialog .actions { background:#fff; bottom:0; isolation:isolate; padding-top:10px; position:sticky; z-index:7; }
-        dialog::backdrop { background:#17243ab8; }
-        @media(max-width:640px){.summary-pair{grid-template-columns:1fr}.stack>*{min-width:0}.box{overflow-x:auto}.item-table{display:table;min-width:560px}}
-      </style><form class="shell" novalidate>
+      <style>${this.sharedStyleMarkup()}</style><form class="shell" novalidate>
         <div class="topline"><div><h2>Create shipment</h2><p class="muted">Complete each section, review the shipment, then request rates.</p></div>${testModeMarkup(this.environment)}</div>
         ${this.renderWorkflow()}
         ${this.#issues.length ? `<div class="alert error" role="alert"><strong>Please review these fields</strong><ul class="issue-list">${this.#issues.slice(0, 8).map((issue) => `<li>${escapeHtml(issue.path)}: ${escapeHtml(issue.message)}</li>`).join('')}</ul></div>` : ''}

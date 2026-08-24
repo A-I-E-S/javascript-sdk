@@ -56,6 +56,8 @@ Runtime Base64 credentials remain the selected integration model for the current
 - `@africanies/shipping/elements` — native custom elements
 - `@africanies/shipping/browser` — client, controllers, and auto-registering elements for browser ESM
 
+The browser UI is compiled with the exact Tailwind CSS v4 build toolchain during SDK development. Consumers do not install Tailwind or import a stylesheet: element styles are embedded in the browser/element bundles and isolated inside each Shadow Root. Headless, server, and controller-only entry points remain DOM- and CSS-free.
+
 Detailed guides are under [`docs/`](./docs/), including [checkout packaging](./docs/checkout-packaging.md).
 
 Version `0.2.0` corrects shipment wire types based on observed rate and purchase payloads. It contains breaking TypeScript and rate-to-purchase adapter changes; see [the migration guide](./docs/migrating-to-0.2.md) and [changelog](./CHANGELOG.md).

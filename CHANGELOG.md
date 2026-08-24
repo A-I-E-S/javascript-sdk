@@ -22,6 +22,8 @@ Release candidate for the additive checkout, automatic-packaging, SDK validation
 - Added Products API-backed human-readable product search and HS-code selection, explicit unit-weight guidance, expanded review/rate/purchase presentation, and responsive/accessibility refinements.
 - Reworked the vanilla example into an SFN-only mini-commerce UAT flow with a Lagos warehouse sender, cart, receiver address, automatic packaging, rates, PayDemo gate, tracking, and returned documents.
 - Added GitHub Pages build/deployment safeguards and expanded Playwright coverage across desktop and mobile browser projects.
+- Compiled the standalone demo and Shadow DOM custom-element styles with an exact Tailwind v4/Vite toolchain. Tailwind remains build-only: consumers receive embedded element styles and do not add a CSS dependency or change headless integrations.
+- Unified automatic and manual shipment success rendering, including tracking, PayDemo records, HTTPS/Base64 document handling, insurance states, and object-URL disposal.
 
 ### Reliability and security
 

@@ -1,7 +1,7 @@
 import type { AfricaniesClient } from '../client.js';
 import type { ShipmentPurchaseRequest, ShipmentPurchaseResult } from '../types.js';
 import { PurchaseController } from '../ui/controllers.js';
-import { AfricaniesElement, escapeHtml, safeExternalUrl, sharedStyles, testModeMarkup } from './base.js';
+import { AfricaniesElement, escapeHtml, safeExternalUrl, testModeMarkup } from './base.js';
 
 function renderDocument(label: string, value: string | null, isUrl: number, required = false): string {
   if (typeof value === 'string' && value !== '') {
@@ -48,7 +48,7 @@ export class AfricaniesPurchaseConfirmationElement extends AfricaniesElement {
   protected render(): void {
     const state = this.#controller?.state;
     const result = state?.response?.data;
-    this.root.innerHTML = `<style>${sharedStyles}
+    this.root.innerHTML = `<style>${this.sharedStyleMarkup()}
       .success { background:white; border:0; padding:clamp(28px,6vw,72px); text-align:center; }
       .success-icon { align-items:center; background:var(--africanies-success-bg); border-radius:999px; color:#0a9b4d; display:flex; font-size:32px; height:72px; justify-content:center; margin:0 auto 18px; width:72px; }
       .reference { font-size:1.3rem; font-weight:850; overflow-wrap:anywhere; }

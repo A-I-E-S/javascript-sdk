@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { AfricaniesClient } from '../src/client.js';
 import type { ShipmentRateDraft } from '../src/types.js';
 import { AfricaniesError } from '../src/errors.js';
@@ -120,11 +122,17 @@ describe('AfricanIES custom elements', () => {
   });
 
   it('contains wide summary tables below the mobile workflow actions', () => {
-    const element = document.createElement('africanies-shipment-builder'); document.body.append(element);
-    const styles = element.shadowRoot!.querySelector('style')!.textContent ?? '';
-    expect(styles).toContain('details.card { max-width:100%; overflow-x:auto; }');
-    expect(styles).toContain('form.shell > .actions');
+    const styles = readFileSync(join(process.cwd(), 'src/elements/tailwind.css'), 'utf8');
+    expect(styles).toContain('details.card{max-width:100%;overflow-x:auto}');
+    expect(styles).toContain('form.shell>.actions');
     expect(styles).toContain('.stack>*{min-width:0}');
+  });
+
+  it('owns Tailwind as an explicit build-time Shadow DOM stylesheet', () => {
+    const styles = readFileSync(join(process.cwd(), 'src/elements/tailwind.css'), 'utf8');
+    expect(styles).toContain('@import "tailwindcss" source(none)');
+    expect(styles).toContain('@source "./**/*.ts"');
+    expect(styles).toContain('--color-africanies-accent');
   });
 
   it('keeps client environment and mode authoritative over host attributes', () => {

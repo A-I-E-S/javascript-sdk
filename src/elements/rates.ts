@@ -1,7 +1,7 @@
 import type { AfricaniesClient } from '../client.js';
 import type { ShipmentRateRequest } from '../types.js';
 import { RateSelectionController } from '../ui/controllers.js';
-import { AfricaniesElement, escapeHtml, sharedStyles, testModeMarkup } from './base.js';
+import { AfricaniesElement, escapeHtml, testModeMarkup } from './base.js';
 
 function formatAmount(value: unknown): string {
   if ((typeof value !== 'number' && typeof value !== 'string')
@@ -45,7 +45,7 @@ export class AfricaniesRateSelectionElement extends AfricaniesElement {
 
   protected render(): void {
     const state = this.#controller?.state;
-    this.root.innerHTML = `<style>${sharedStyles}
+    this.root.innerHTML = `<style>${this.sharedStyleMarkup()}
       .rates-heading { align-items:center; display:flex; justify-content:space-between; }
       .rate { align-items:center; display:grid; gap:18px; grid-template-columns:minmax(180px,1.2fr) minmax(150px,.65fr) minmax(180px,.8fr) auto; padding:18px 22px; }
       .carrier { align-items:center; display:flex; gap:12px; }

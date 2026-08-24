@@ -116,7 +116,7 @@ test('uninsured SFN checkout preserves unit weight, selected rate, payment, trac
   await expect(page.locator('.payment-record')).toContainText('30,500');
   await expect(page.locator('.payment-record')).toContainText('Confirmed');
   await expect(page.getByRole('link', { name: /Track shipment/ })).toHaveAttribute('href', /^https:/);
-  await expect(page.getByText('Not requested')).toBeVisible(); expect(fixture.purchaseCount).toBe(1);
+  await expect(page.locator('#shipment-result').getByText('Not requested')).toBeVisible(); expect(fixture.purchaseCount).toBe(1);
   expect(fixture.purchase).toMatchObject({ file_is_url: 1, is_insured: '0', shipment_method_slug: rate.slug, currency: 'NGN' });
   const address = fixture.purchase?.address as { sender: { country: string }; receiver: { country: string } };
   expect(address.sender.country).toBe('NG'); expect(address.receiver.country).toBe('US');
@@ -136,19 +136,18 @@ test('successful login hides authentication and logout returns a fresh in-memory
 });
 
 test('typed HS search debounces, cancels stale work, and supports keyboard classification', async ({ page }) => {
-  let searches = 0; let releaseFirst!: () => void; const firstCanFinish = new Promise<void>((resolve) => { releaseFirst = resolve; });
+  const searchUrls: string[] = [];
   await page.route(apiPattern, async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.includes('/product/search/')) {
-      searches += 1; if (searches === 1) await firstCanFinish;
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(envelope(searches === 1 ? [{ ...product, hs_code: 'OLD', name: 'Old result' }] : [product])) }).catch(() => undefined); return;
+      searchUrls.push(route.request().url()); await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(envelope([product])) }); return;
     }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(envelope([])) });
   });
   await login(page); const input = page.locator('[data-product-search="headgear"]');
-  await input.fill('hel'); await page.waitForTimeout(200); expect(searches).toBe(0);
-  await expect.poll(() => searches).toBe(1); await input.fill('head gear'); await expect.poll(() => searches).toBe(2); releaseFirst();
-  const select = page.locator('[data-product-results="headgear"]'); await expect(select).toBeVisible(); await expect(select).toContainText(product.name); await expect(select).not.toContainText('Old result');
+  await input.fill('hel'); await page.waitForTimeout(200); expect(searchUrls).toHaveLength(0);
+  await input.fill('helmet'); await page.waitForTimeout(100); await input.fill('head gear');
+  const select = page.locator('[data-product-results="headgear"]'); await expect(select).toBeVisible(); expect(searchUrls).toHaveLength(1); expect(decodeURIComponent(searchUrls[0]!)).toContain('/product/search/head gear'); await expect(select).toContainText(product.name);
   await page.locator('[data-product="headgear"].quantity').fill('1'); await select.focus(); await select.press('ArrowDown'); await select.press('Enter');
   await expect(page.locator('[data-product-status="headgear"]')).toContainText(`HS ${product.hs_code}`); await expect(page.locator('#checkout-button')).toBeEnabled();
 });

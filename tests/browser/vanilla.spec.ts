@@ -112,9 +112,13 @@ async function reachPaymentWithQuantity(page: Page, quantity: string, insured = 
 test('uninsured SFN checkout preserves unit weight, selected rate, payment, tracking and URL documents', async ({ page }) => {
   const fixture = await mockApi(page); await login(page); await reachPayment(page); await page.locator('#pay-button').click();
   await expect(page.locator('#result-section')).toBeVisible(); await expect(page.getByText('TRACK-UAT-1')).toBeVisible();
-  await expect(page.locator('.payment-record')).toContainText('PAYDEMO FULL ORDER + DELIVERY PAYMENT');
-  await expect(page.locator('.payment-record')).toContainText('30,500');
-  await expect(page.locator('.payment-record')).toContainText('Confirmed');
+  const paymentRecord = page.locator('#shipment-result .payment-record');
+  await expect(paymentRecord.getByText('PAYDEMO FULL ORDER + DELIVERY', { exact: true })).toBeVisible();
+  await expect(paymentRecord.getByRole('heading', { name: 'Payment recorded' })).toBeVisible(); await expect(paymentRecord.locator('.payment-status-badge')).toHaveText('Paid');
+  await expect(paymentRecord.locator('.payment-record-total')).toContainText('30,500'); await expect(paymentRecord).toContainText(/PAYDEMO-/);
+  await expect(paymentRecord.locator('dl div').filter({ hasText: 'Merchandise' })).toContainText('18,500');
+  await expect(paymentRecord.locator('dl div').filter({ hasText: 'Delivery' })).toContainText('12,000');
+  await expect(paymentRecord.locator('dl div').filter({ hasText: 'Carrier' })).toContainText(rate.name); await expect(paymentRecord.locator('dl div').filter({ hasText: 'Confirmed' })).toContainText('Confirmed by PayDemo');
   await expect(page.getByRole('link', { name: /Track shipment/ })).toHaveAttribute('href', /^https:/);
   await expect(page.locator('#shipment-result').getByText('Not requested')).toBeVisible(); expect(fixture.purchaseCount).toBe(1);
   expect(fixture.purchase).toMatchObject({ file_is_url: 1, is_insured: '0', shipment_method_slug: rate.slug, currency: 'NGN' });
@@ -165,6 +169,12 @@ test('manual host lab completes classified boxes, rates, full PayDemo, purchase,
   const fixture = await mockApi(page); await reachManualPayment(page);
   await expect(page.locator('.manual-payment')).toContainText(rate.name); await expect(page.locator('.manual-payment')).toContainText('15,000');
   await page.locator('#manual-pay').click(); await expect(page.locator('.manual-result')).toContainText('TRACK-UAT-1');
+  const paymentRecord = page.locator('.manual-result .payment-record');
+  await expect(paymentRecord.getByText('PAYDEMO FULL ORDER + DELIVERY', { exact: true })).toBeVisible();
+  await expect(paymentRecord.getByRole('heading', { name: 'Payment recorded' })).toBeVisible(); await expect(paymentRecord.locator('.payment-status-badge')).toHaveText('Paid');
+  await expect(paymentRecord.locator('.payment-record-total')).toContainText('15,000'); await expect(paymentRecord).toContainText(/PAYDEMO-/);
+  await expect(paymentRecord.locator('dl div').filter({ hasText: 'Merchandise' })).toContainText('3,000');
+  await expect(paymentRecord.locator('dl div').filter({ hasText: 'Delivery' })).toContainText('12,000'); await expect(paymentRecord.locator('dl div').filter({ hasText: 'Confirmed' })).toContainText('Confirmed by PayDemo');
   await expect(page.locator('.manual-result .document-card')).toHaveCount(3); expect(fixture.purchaseCount).toBe(1);
   expect(fixture.purchase).toMatchObject({ file_is_url: 1, is_insured: '0', shipment_method_slug: rate.slug });
   const boxes = fixture.purchase?.boxes as Array<{ weight: number; items: Array<{ weight: number; quantity: number; product_hs_code: string }> }>;

@@ -52,6 +52,33 @@ async function login(page: Page): Promise<void> {
   await expect(page.locator('#encoded-key')).toHaveValue('');
 }
 
+async function manualLogin(page: Page): Promise<void> {
+  await page.goto('http://127.0.0.1:4174/manual.html', { waitUntil: 'domcontentloaded' });
+  await page.locator('#manual-key').fill(credential);
+  await page.getByRole('button', { name: 'Validate and open lab' }).click();
+  await expect(page.locator('#manual-app')).toBeVisible();
+  await expect(page.locator('#manual-login')).toBeHidden();
+  await expect(page.locator('#manual-key')).toHaveValue('');
+}
+
+async function reachManualPayment(page: Page): Promise<void> {
+  await manualLogin(page);
+  const builder = page.locator('africanies-shipment-builder');
+  for (let step = 0; step < 3; step += 1) await builder.getByRole('button', { name: 'Continue' }).click();
+  await builder.getByLabel('Item name').fill('Safety helmet');
+  await builder.getByLabel('Description').fill('Protective head gear');
+  await builder.locator('[data-product-query]').fill('head gear');
+  await expect(builder.getByLabel('Select product classification')).toBeVisible();
+  await builder.getByLabel('Select product classification').selectOption(product.hs_code);
+  await builder.getByRole('button', { name: 'Continue' }).click();
+  await builder.getByRole('button', { name: /Create shipment/ }).click();
+  const rates = page.locator('africanies-rate-selection');
+  await expect(rates.getByText(rate.name)).toBeVisible();
+  await rates.locator(`button[data-slug="${rate.slug}"]`).click();
+  await rates.getByRole('button', { name: 'Continue' }).click();
+  await expect(page.locator('.manual-payment')).toBeVisible();
+}
+
 async function classifyAndAdd(page: Page, quantity = '1'): Promise<void> {
   await page.locator('[data-product="headgear"].quantity').fill(quantity);
   await page.locator('button[data-product="headgear"].search-product').click();
@@ -86,9 +113,10 @@ test('uninsured SFN checkout preserves unit weight, selected rate, payment, trac
   const fixture = await mockApi(page); await login(page); await reachPayment(page); await page.locator('#pay-button').click();
   await expect(page.locator('#result-section')).toBeVisible(); await expect(page.getByText('TRACK-UAT-1')).toBeVisible();
   await expect(page.locator('.payment-record')).toContainText('PAYDEMO FULL ORDER + DELIVERY PAYMENT');
+  await expect(page.locator('.payment-record')).toContainText('30,500');
   await expect(page.locator('.payment-record')).toContainText('Confirmed');
   await expect(page.getByRole('link', { name: /Track shipment/ })).toHaveAttribute('href', /^https:/);
-  await expect(page.getByText('Not requested')).toBeVisible(); expect(fixture.purchaseCount).toBe(1);
+  await expect(page.locator('#shipment-result').getByText('Not requested')).toBeVisible(); expect(fixture.purchaseCount).toBe(1);
   expect(fixture.purchase).toMatchObject({ file_is_url: 1, is_insured: '0', shipment_method_slug: rate.slug, currency: 'NGN' });
   const address = fixture.purchase?.address as { sender: { country: string }; receiver: { country: string } };
   expect(address.sender.country).toBe('NG'); expect(address.receiver.country).toBe('US');
@@ -96,6 +124,70 @@ test('uninsured SFN checkout preserves unit weight, selected rate, payment, trac
   expect(boxes[0]!.weight).toBeGreaterThan(0.8); expect(boxes[0]!.items[0]).toMatchObject({ product_hs_code: product.hs_code, weight: 0.8, quantity: 1 });
   expect(fixture.requests.find((request) => request.url().endsWith('/shipment/carriers'))?.headers().authorization).toContain(credential);
 });
+
+test('successful login hides authentication and logout returns a fresh in-memory session', async ({ page }) => {
+  await mockApi(page); await login(page);
+  await expect(page.locator('#login-view')).toBeHidden(); await expect(page.locator('#authenticated-actions')).toBeVisible();
+  await classifyAndAdd(page, '2'); await page.locator('#logout-button').click();
+  await expect(page.locator('#login-view')).toBeVisible(); await expect(page.locator('#store-view')).toBeHidden();
+  await expect(page.locator('#authenticated-actions')).toBeHidden(); await expect(page.locator('#encoded-key')).toHaveValue('');
+  await expect(page.locator('#cart-count')).toHaveText('0'); await expect(page.locator('#checkout-button')).toBeDisabled();
+  expect(await page.evaluate(() => ({ local: localStorage.length, session: sessionStorage.length }))).toEqual({ local: 0, session: 0 });
+});
+
+test('typed HS search debounces, cancels stale work, and supports keyboard classification', async ({ page }) => {
+  const searchUrls: string[] = [];
+  await page.route(apiPattern, async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.includes('/product/search/')) {
+      searchUrls.push(route.request().url()); await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(envelope([product])) }); return;
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(envelope([])) });
+  });
+  await login(page); const input = page.locator('[data-product-search="headgear"]');
+  await input.fill('hel'); await page.waitForTimeout(200); expect(searchUrls).toHaveLength(0);
+  await input.fill('helmet'); await page.waitForTimeout(100); await input.fill('head gear');
+  await expect.poll(() => searchUrls.map((url) => decodeURIComponent(url))).toEqual([expect.stringContaining('/product/search/head gear')]);
+  const select = page.locator('[data-product-results="headgear"]'); await expect(page.locator('[data-product-status="headgear"]')).toContainText('1 matching classifications found.'); await expect(select).toBeVisible(); await expect(select).toContainText(product.name);
+  await page.locator('[data-product="headgear"].quantity').fill('1'); await select.focus(); await select.press('ArrowDown'); await select.press('Enter');
+  await expect(page.locator('[data-product-status="headgear"]')).toContainText(`HS ${product.hs_code}`); await expect(page.locator('#checkout-button')).toBeEnabled();
+});
+
+test('PayDemo review presents merchandise, selected delivery, carrier and full total before intent-bound purchase', async ({ page }) => {
+  await mockApi(page); await login(page); await reachPayment(page);
+  await expect(page.locator('#payment-context')).toContainText(rate.name); await expect(page.locator('#order-summary')).toContainText('18,500');
+  await expect(page.locator('#order-summary')).toContainText('12,000'); await expect(page.locator('#order-summary')).toContainText('30,500');
+  await expect(page.locator('#order-summary')).toContainText('Full order + delivery'); await expect(page.locator('#payment-status')).toHaveText('No payment has been attempted.');
+});
+
+test('manual host lab completes classified boxes, rates, full PayDemo, purchase, tracking and URL documents', async ({ page }) => {
+  const fixture = await mockApi(page); await reachManualPayment(page);
+  await expect(page.locator('.manual-payment')).toContainText(rate.name); await expect(page.locator('.manual-payment')).toContainText('30,500');
+  await page.locator('#manual-pay').click(); await expect(page.locator('.manual-result')).toContainText('TRACK-UAT-1');
+  await expect(page.locator('.manual-result .document-card')).toHaveCount(3); expect(fixture.purchaseCount).toBe(1);
+  expect(fixture.purchase).toMatchObject({ file_is_url: 1, is_insured: '0', shipment_method_slug: rate.slug });
+  const boxes = fixture.purchase?.boxes as Array<{ weight: number; items: Array<{ weight: number; quantity: number; product_hs_code: string }> }>;
+  expect(boxes[0]).toMatchObject({ weight: 2 }); expect(boxes[0]!.items[0]).toMatchObject({ weight: 0.8, quantity: 1, product_hs_code: product.hs_code });
+});
+
+test('manual host lab validates classification before requesting rates', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'chromium', 'One engine covers builder validation; custom-element behavior has its own matrix.');
+  const fixture = await mockApi(page); await manualLogin(page); const builder = page.locator('africanies-shipment-builder');
+  for (let step = 0; step < 4; step += 1) await builder.getByRole('button', { name: 'Continue' }).click();
+  await builder.getByRole('button', { name: /Create shipment/ }).click(); await expect(builder.getByRole('alert')).toContainText(/HS code|required/i);
+  expect(fixture.requests.filter((request) => request.url().endsWith('/shipment/rates'))).toHaveLength(0);
+});
+
+for (const failure of ['definitive', 'uncertain'] as const) {
+  test(`manual purchase treats ${failure} failures without unsafe automatic duplication`, async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium', 'One engine covers purchase-state policy.');
+    const fixture = await mockApi(page, failure === 'definitive' ? { purchaseValidationFailure: true } : { purchaseFailure: true }); await reachManualPayment(page);
+    await page.locator('#manual-pay').click(); await expect(page.locator('#manual-error')).toContainText(failure === 'definitive' ? 'Unit weight validation failed.' : /Reconcile/);
+    await page.locator('#manual-pay').click();
+    if (failure === 'definitive') expect(fixture.purchaseCount).toBe(2);
+    else { await expect(page.locator('#manual-error')).toContainText('prior result is uncertain'); expect(fixture.purchaseCount).toBe(1); }
+  });
+}
 
 test('insured checkout sends insurance flag and renders Base64 documents by authoritative flags', async ({ page }) => {
   const fixture = await mockApi(page, { purchaseData: purchaseResult(true, true) }); await login(page); await reachPayment(page, true); await page.locator('#pay-button').click();
@@ -187,14 +279,17 @@ test('non-native whitespace address validation surfaces an SDK error before rate
   expect(fixture.requests.filter((request) => request.url().endsWith('/shipment/rates'))).toHaveLength(0);
 });
 
-test('built Pages artifact loads at the repository base without asset or console failures', async ({ page }) => {
+test('built Pages artifact loads and navigates both demo routes without asset or console failures', async ({ page }) => {
   const failures: string[] = []; const consoleErrors: string[] = [];
   page.on('requestfailed', (request) => failures.push(`${request.method()} ${request.url()}`));
   page.on('response', (response) => { if (response.status() >= 400) failures.push(`${response.status()} ${response.url()}`); });
   page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
-  await page.goto('http://127.0.0.1:4175/javascript-sdk/', { waitUntil: 'networkidle' });
+  await page.goto('http://127.0.0.1:4175/', { waitUntil: 'networkidle' });
   await expect(page).toHaveTitle(/Africanies Store/); await expect(page.locator('.test-badge')).toContainText('SANDBOX · SFN');
-  await expect(page.locator('#encoded-key')).toBeVisible(); expect(failures).toEqual([]); expect(consoleErrors).toEqual([]);
+  await expect(page.locator('#encoded-key')).toBeVisible(); await page.getByRole('link', { name: 'Manual packaging lab' }).click();
+  await expect(page).toHaveURL(/manual\.html$/); await expect(page.locator('#manual-key')).toBeVisible(); await expect(page).toHaveTitle(/Manual Packaging Lab/);
+  await page.getByRole('link', { name: 'Automatic checkout' }).click(); await expect(page.locator('#encoded-key')).toBeVisible();
+  expect(failures).toEqual([]); expect(consoleErrors).toEqual([]);
 });
 
 test('mobile checkout remains usable without horizontal overflow and reports progress semantically', async ({ page }, testInfo) => {

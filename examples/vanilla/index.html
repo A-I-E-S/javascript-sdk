@@ -6,7 +6,7 @@
   <title>Africanies Store — SDK UAT</title><script type="module" src="/src/main.js"></script>
 </head>
 <body>
-  <header class="site-header"><a class="brand" href="#">Africanies <span>Store</span></a><div class="test-badge">SANDBOX · SFN</div><div class="cart-chip"><span id="cart-count">0</span> items</div></header>
+  <header class="site-header"><a class="brand" href="./">Africanies <span>Store</span></a><nav class="demo-nav" aria-label="Demo applications"><a aria-current="page" href="./">Automatic checkout</a><a href="./manual.html">Manual packaging lab</a></nav><div class="test-badge">SANDBOX · SFN</div><div id="authenticated-actions" class="authenticated-actions" hidden><span class="session-state"><i aria-hidden="true"></i>Sandbox connected</span><span class="cart-chip"><span id="cart-count">0</span> items</span><button id="logout-button" class="header-button" type="button">Logout</button></div></header>
   <main>
     <section id="login-view" class="login-view">
       <form id="login-form" class="panel auth-card">
@@ -42,8 +42,8 @@
         <div id="packaging" class="packaging"></div><div id="rates" class="rates"></div><button id="rate-button" class="primary wide" disabled>Continue to PayDemo</button>
       </section>
 
-      <section id="payment-section" class="content" hidden><div class="section-heading"><div><p class="eyebrow">Fake payment gateway</p><h2>PayDemo</h2></div><button class="text-button" data-back="shipping-section">Change shipping</button></div>
-        <div class="payment-layout"><div class="panel"><p class="paydemo-logo">Pay<span>Demo</span></p><p>No real money or payment details are used.</p><label>Simulated result<select id="payment-outcome"><option value="success">Successful payment</option><option value="failed">Failed payment</option><option value="cancelled">Cancelled payment</option></select></label><button id="pay-button" class="primary wide">Pay with PayDemo</button></div><div id="order-summary" class="panel"></div></div>
+      <section id="payment-section" class="content payment-content" hidden><div class="section-heading"><div><p class="eyebrow">Full order payment</p><h2>Review and confirm with PayDemo</h2><p>Confirm the merchandise and delivery total before Africanies purchases the shipment.</p></div><button class="text-button" data-back="shipping-section">Change shipping</button></div>
+        <div class="payment-layout"><div class="panel paydemo-gateway"><div class="gateway-heading"><p class="paydemo-logo">Pay<span>Demo</span></p><span class="simulation-badge">SIMULATION</span></div><div class="secure-disclosure"><span aria-hidden="true">🔒</span><div><strong>Secure fake gateway</strong><p>PayDemo processes no real money, card details, or bank credentials. Choose a test outcome below.</p></div></div><dl id="payment-context" class="payment-context"></dl><label>Payment simulation outcome<select id="payment-outcome"><option value="success">Approve full payment</option><option value="failed">Decline payment</option><option value="cancelled">Customer cancels</option></select></label><button id="pay-button" class="primary wide">Simulate full payment</button><p id="payment-status" class="message" role="status" aria-live="polite">No payment has been attempted.</p></div><div id="order-summary" class="panel order-summary" aria-live="polite"></div></div>
       </section>
 
       <section id="result-section" class="content" hidden><div class="success-mark">✓</div><p class="eyebrow">Shipment purchased</p><h2>Your shipment is on its way</h2><div id="shipment-result"></div></section>

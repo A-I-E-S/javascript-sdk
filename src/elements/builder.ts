@@ -73,6 +73,8 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
   #productResults = new Map<string, ProductHsCode[]>();
   #productStatus = new Map<string, string>();
   #productSearches = new Map<string, { version: number; controller: AbortController }>();
+  #productQueries = new Map<string, string>();
+  #productDebounces = new Map<string, number>();
 
   get client(): AfricaniesClient | undefined { return this.#client; }
   set client(value: AfricaniesClient | undefined) {
@@ -168,7 +170,7 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
     ];
     const resultKey = `${boxIndex}:${itemIndex}`;
     const results = this.#productResults.get(resultKey) ?? [];
-    return `<div class="item"><div class="section-title"><strong>Item ${itemIndex + 1}</strong><button class="danger" type="button" data-action="remove-item" data-box="${boxIndex}" data-item="${itemIndex}" ${this.#value!.boxes[boxIndex]!.items.length === 1 ? 'disabled' : ''}>Remove</button></div><div class="grid">${fields.map(([key, label, type]) => { const path = `boxes.${boxIndex}.items.${itemIndex}.${String(key)}`; return `<label>${label}<input type="${type}" data-path="${path}" data-box="${boxIndex}" data-item="${itemIndex}" data-item-field="${String(key)}" value="${escapeHtml(item[key])}" ${this.issueAttributes(path)}>${this.issueMarkup(path)}</label>`; }).join('')}<div><label>Find closest product<input data-product-query data-box="${boxIndex}" data-item="${itemIndex}" value="${escapeHtml(item.product_hs_code_description ?? item.name)}"></label><button class="secondary" type="button" data-action="search-product" data-box="${boxIndex}" data-item="${itemIndex}" ${!this.#client ? 'disabled title="Set client to search products"' : ''}>Search products</button><select aria-label="Select product classification" data-product-result data-box="${boxIndex}" data-item="${itemIndex}" ${results.length ? '' : 'hidden'}><option value="">Select a product…</option>${results.map((product) => `<option value="${escapeHtml(product.hs_code)}" data-name="${escapeHtml(product.name)}" ${product.hs_code === item.product_hs_code ? 'selected' : ''}>${escapeHtml(product.name)}</option>`).join('')}</select><p class="muted" role="status" aria-live="polite">${escapeHtml(this.#productStatus.get(resultKey) ?? (item.product_hs_code ? `${item.product_hs_code_description ?? 'Selected product'} · HS ${item.product_hs_code}` : 'Search the Products API; selecting a product supplies its HS code.'))}</p></div></div></div>`;
+    return `<div class="item"><div class="section-title"><strong>Item ${itemIndex + 1}</strong><button class="danger" type="button" data-action="remove-item" data-box="${boxIndex}" data-item="${itemIndex}" ${this.#value!.boxes[boxIndex]!.items.length === 1 ? 'disabled' : ''}>Remove</button></div><div class="grid">${fields.map(([key, label, type]) => { const path = `boxes.${boxIndex}.items.${itemIndex}.${String(key)}`; return `<label>${label}<input type="${type}" data-path="${path}" data-box="${boxIndex}" data-item="${itemIndex}" data-item-field="${String(key)}" value="${escapeHtml(item[key])}" ${this.issueAttributes(path)}>${this.issueMarkup(path)}</label>`; }).join('')}<div><label>Find closest product<input data-product-query data-box="${boxIndex}" data-item="${itemIndex}" autocomplete="off" value="${escapeHtml(this.#productQueries.get(resultKey) ?? item.product_hs_code_description ?? item.name)}"></label><button class="secondary" type="button" data-action="search-product" data-box="${boxIndex}" data-item="${itemIndex}" ${!this.#client ? 'disabled title="Set client to search products"' : ''}>Search now</button><select aria-label="Select product classification" data-product-result data-box="${boxIndex}" data-item="${itemIndex}" ${results.length ? '' : 'hidden'}><option value="">Select a product…</option>${results.map((product) => `<option value="${escapeHtml(product.hs_code)}" data-name="${escapeHtml(product.name)}" ${product.hs_code === item.product_hs_code ? 'selected' : ''}>${escapeHtml(product.name)}</option>`).join('')}</select><p class="muted" role="status" aria-live="polite">${escapeHtml(this.#productStatus.get(resultKey) ?? (item.product_hs_code ? `${item.product_hs_code_description ?? 'Selected product'} · HS ${item.product_hs_code}` : 'Type at least 3 characters; search starts automatically.'))}</p></div></div></div>`;
   }
 
   private bind(): void {
@@ -204,6 +206,16 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
 
   private handleInput(event: Event): void {
     const input = event.target as HTMLInputElement | HTMLSelectElement;
+    if (input.matches('[data-product-query]')) {
+      const boxIndex = Number(input.dataset.box); const itemIndex = Number(input.dataset.item); const key = `${boxIndex}:${itemIndex}`;
+      this.#productQueries.set(key, input.value); this.#productSearches.get(key)?.controller.abort(); this.#productSearches.delete(key);
+      const pending = this.#productDebounces.get(key); if (pending !== undefined) clearTimeout(pending);
+      const item = this.#value!.boxes[boxIndex]!.items[itemIndex]!; item.product_hs_code = ''; delete item.product_hs_code_description; this.#productResults.delete(key);
+      if (input.value.trim().length < 3) { this.#productStatus.set(key, 'Type at least 3 characters to search.'); this.#productDebounces.delete(key); return; }
+      this.#productStatus.set(key, 'Waiting to search…');
+      this.#productDebounces.set(key, window.setTimeout(() => { this.#productDebounces.delete(key); void this.searchProducts(boxIndex, itemIndex); }, 350));
+      return;
+    }
     if (input.matches('[data-product-result]')) {
       const boxIndex = Number(input.dataset.box); const itemIndex = Number(input.dataset.item);
       const option = (input as HTMLSelectElement).selectedOptions[0]; const item = this.#value!.boxes[boxIndex]!.items[itemIndex]!;
@@ -243,13 +255,14 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
   private async searchProducts(boxIndex: number, itemIndex: number): Promise<void> {
     if (!this.#client) return;
     const client = this.#client;
-    const query = this.root.querySelector<HTMLInputElement>(`[data-product-query][data-box="${boxIndex}"][data-item="${itemIndex}"]`)?.value.trim() ?? '';
+    const query = (this.#productQueries.get(`${boxIndex}:${itemIndex}`) ?? this.root.querySelector<HTMLInputElement>(`[data-product-query][data-box="${boxIndex}"][data-item="${itemIndex}"]`)?.value ?? '').trim();
     const key = `${boxIndex}:${itemIndex}`; const item = this.#value!.boxes[boxIndex]!.items[itemIndex]!;
+    const pending = this.#productDebounces.get(key); if (pending !== undefined) clearTimeout(pending); this.#productDebounces.delete(key);
     this.#productSearches.get(key)?.controller.abort();
     const search = { version: (this.#productSearches.get(key)?.version ?? 0) + 1, controller: new AbortController() };
     this.#productSearches.set(key, search);
     item.product_hs_code = ''; delete item.product_hs_code_description; this.#productResults.delete(key);
-    if (!query) { this.#productSearches.delete(key); this.#productStatus.set(key, 'Enter a product name to search.'); this.render(); return; }
+    if (query.length < 3) { this.#productSearches.delete(key); this.#productStatus.set(key, 'Type at least 3 characters to search.'); this.render(); return; }
     this.#productStatus.set(key, 'Searching products…'); this.render();
     try {
       const response = await client.products.search(query, search.controller.signal);
@@ -267,6 +280,8 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
   private cancelProductSearches(): void {
     for (const search of this.#productSearches.values()) search.controller.abort();
     this.#productSearches.clear();
+    for (const timer of this.#productDebounces.values()) clearTimeout(timer);
+    this.#productDebounces.clear();
   }
 
   private handleAction(event: Event): void {

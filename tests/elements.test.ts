@@ -180,6 +180,16 @@ describe('AfricanIES custom elements', () => {
     expect(results[1]!.textContent).toContain('Cotton dresses'); expect(results[1]!.textContent).not.toContain('Head gear');
   });
 
+  it('debounces product search while the user types and supplies selectable results', async () => {
+    const search = vi.fn().mockResolvedValue({ success: true, status_code: 200, message: 'ok', data: [{ id: 1, hs_code: '6506100000', name: 'Head gear', active: true, deleted_at: null, created_at: '2026-01-01', updated_at: null }] });
+    const element = document.createElement('africanies-shipment-builder'); element.client = fakeClient({ products: { search } }); element.value = rateRequest(); document.body.append(element);
+    for (let step = 0; step < 3; step += 1) element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="next-step"]')!.click();
+    const query = element.shadowRoot!.querySelector<HTMLInputElement>('[data-product-query]')!;
+    query.value = 'he'; query.dispatchEvent(new Event('input', { bubbles: true })); await new Promise((resolve) => setTimeout(resolve, 400)); expect(search).not.toHaveBeenCalled();
+    query.value = 'head gear'; query.dispatchEvent(new Event('input', { bubbles: true })); await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(search).toHaveBeenCalledOnce(); expect(element.shadowRoot!.querySelector<HTMLSelectElement>('[data-product-result]')!.textContent).toContain('Head gear');
+  });
+
   it('renders purchase validation issues instead of silently rejecting', async () => {
     const purchase = vi.fn();
     const request = purchaseRequest();

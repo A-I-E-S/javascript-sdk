@@ -23,13 +23,17 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - uses: actions/configure-pages@v5
+        id: pages
       - run: npm ci
       - run: npm run build
       - run: npm ci
         working-directory: examples/vanilla
-      - run: npm run build -- --base=/javascript-sdk/
+      - run: npm run build -- --base="${{ steps.pages.outputs.base_path }}/"
         working-directory: examples/vanilla
-      - uses: actions/configure-pages@v5
+      - run: node scripts/verify-pages-artifact.mjs
+        env:
+          PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: examples/vanilla/dist

@@ -1,30 +1,40 @@
-# AfricanIES Shipping vanilla example
+# Africanies Store — vanilla SDK UAT
 
-This private Vite app consumes the registry-published `@africanies/shipping@0.1.0` package through its browser entry point. It demonstrates the three custom-element stages:
+This Vite application is a miniature e-commerce checkout for testing `@africanies/shipping`. It is intentionally sandbox-only and SFN-only: the sender is the fixed demo warehouse in Lagos, Nigeria, and the customer enters the receiver address.
 
-The dependency intentionally remains pinned to `0.1.0` while `0.2.0` is unpublished. After `0.2.0` is approved and visible on the public registry, update both `package.json` and `package-lock.json` together and rerun the full demo flow. Do not point this installable example at a nonexistent registry version.
+The journey covers:
 
-1. build and validate a shipment;
-2. request and select a rate;
-3. convert the selected rate `slug` to `shipment_method_slug` and purchase the shipment.
+1. Enter a Base64 API credential and validate it with the authenticated carriers read endpoint.
+2. Select catalogue items and quantities.
+3. Search the Africanies Products API by human-readable product name and select the returned HS classification.
+4. Enter the customer delivery address.
+5. Use the SDK automatic packaging mode with a 1 cm allowance on every item dimension, a configurable box catalogue, and a 30 kg maximum gross weight.
+6. Retrieve and select a carrier rate and include its `payment_amount` in the displayed order total.
+7. Complete a clearly simulated PayDemo payment for the displayed merchandise plus delivery total. The demo retains PayDemo's full amount, currency, and reference. Because Africanies owns only delivery, shipment purchase separately binds that host-confirmed payment reference to the shipping portion through the SDK's intent-bound `purchaseAfterPayment()` helper.
+8. Purchase with `file_is_url: 1` and the chosen `is_insured: '0' | '1'`, then show tracking, waybill, commercial invoice, and insurance documents returned by the API.
 
-Use Node.js 22 or newer:
+The credential is held in page memory only and cleared from the input after validation. It is not placed in storage, URLs, source, or logs. Base64 is reversible and browser users can inspect outbound authorization; use sandbox credentials only.
+
+## Local use
+
+Node.js 22 or newer is required.
 
 ```sh
 npm install
 npm run dev
 ```
 
-For a production build:
+Run the deterministic demo-state tests and production build with:
 
 ```sh
+npm test
 npm run build
 ```
 
-The encoded API key entered in the form is cleared from the input after client creation and is never logged. For local development only, you may copy `.env.example` to the ignored `.env.local` and set `VITE_AFRICANIES_ENCODED_KEY`; the demo pre-fills the password input from that local value on page load and Reset. Vite compiles every `VITE_*` value into the browser bundle, so never deploy or share a build produced with that variable set. Prefer entering a test credential into the form after the dev server starts. Test mode is the default. Live mode requires confirmation during configuration and a second confirmation before the live purchase stage.
+The production build is static and the deployment workflow supplies the `/javascript-sdk/` GitHub Pages project base. The deployed origin must be allowed by the Africanies sandbox CORS policy. Do not build a public artifact with `VITE_AFRICANIES_ENCODED_KEY` or any credential embedded in its environment.
 
-The shipment builder starts with the documentation sample populated (John Doe in Isolo to Jane Smith in Boston, one box, and two items). For compatibility with the pinned `0.1.0` builder, the demo derives its two legacy-required optional fields without changing the supplied values: `price` equals each item's `unit_price`, and `product_hs_code_description` equals its `description`. Candidate `0.2.0` accepts both as optional metadata. SFN uses `cm`/`KG`, last-mile delivery, and no pickup; STN uses `inches`/`LBS`, pickup, and no last-mile delivery. Reset restores the SFN sample values, keeps the page's generated external reference stable, and advances the assigned date to the earliest allowed date (tomorrow).
+The demo keeps one external reference and immutable purchase intent for an attempted order. A definitive validation or rejected API response can be corrected safely. If network delivery is uncertain, or the API response could follow an accepted request, the demo blocks automatic retry and directs the tester to reconcile that reference rather than risking a duplicate shipment.
 
-The demo also has an explicit pre-publication compatibility boundary. It normalizes Stage 1's legacy string numbers and legacy mode units to the `0.2.0` numeric and mode-specific rate wire contract before requesting rates. After the pinned `0.1.0` purchase adapter runs, it verifies the selected rate currency and adds the mode currency only when the legacy adapter omitted it. For legacy STN only, the old confirmation component receives its obsolete unit spelling for local validation while a scoped client wrapper sends the untouched canonical `inches`/`LBS` request to the API. These operations are idempotent and bypassed when the demo is later upgraded to `0.2.0`; addresses are preserved unchanged.
+URL documents are opened only over HTTPS. Base64 PDF downloads are decoded in memory only after format validation and are capped at 10 MB; malformed or oversized document data produces a clear unavailable state instead of an unbounded browser allocation.
 
-Back and Reset only change or clear the demo's local UI state. They cannot cancel or revoke a purchase request once it has been sent, including an in-flight live purchase.
+The SDK still supports manual packaging for host applications that select that integration mode. The storefront does not offer that choice to customers; this demo’s host configuration selects automatic packaging.

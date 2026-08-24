@@ -1,313 +1,167 @@
-import {
-  AfricaniesError,
-  createAfricaniesClient,
-  defineAfricaniesElements,
-  preparePurchaseRequest,
-} from '@africanies/shipping/browser';
+import * as Shipping from '@africanies/shipping/browser';
 import './styles.css';
 import {
-  completePreparedPurchaseRequest,
-  isAssignedDateValid,
-  legacyPurchaseRequestForPresentation,
-  minimumAssignedDate,
-  normalizeCompletedRateRequest,
-  sampleRateDraft,
+  DEMO_PRODUCTS, WAREHOUSE_ADDRESS, cartLines, cartTotals, createPackagingInput,
+  receiverFromForm, shippingAmount, minimumAssignedDate, payDemoResult,
 } from './demo-state.js';
 
-defineAfricaniesElements();
+const $ = (selector) => document.querySelector(selector);
+const money = (value, currency = 'NGN') => new Intl.NumberFormat('en-NG', { style: 'currency', currency }).format(Number(value));
+const html = (value) => String(value).replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]);
+const state = { client: null, cart: {}, classifications: {}, productSearches: {}, lines: [], packaging: null, rateRequest: null, rates: [], quote: null, selection: null, selectedRate: null, payment: null, purchaseIntent: null, externalReference: null, purchaseState: 'idle', documentUrls: [] };
 
-const setupForm = document.querySelector('#setup-form');
-const environmentInput = document.querySelector('#environment');
-const shipmentModeInput = document.querySelector('#shipment-mode');
-const encodedKeyInput = document.querySelector('#encoded-key');
-const externalReferenceInput = document.querySelector('#external-reference');
-const assignedDateInput = document.querySelector('#assigned-date');
-const liveConfirmation = document.querySelector('#live-confirmation');
-const confirmLiveInput = document.querySelector('#confirm-live');
-const startButton = document.querySelector('#start-button');
-const resetButton = document.querySelector('#reset-button');
-const safetyBanner = document.querySelector('#safety-banner');
-const flowTitle = document.querySelector('#flow-title');
-const statusRegion = document.querySelector('#app-status');
-const errorRegion = document.querySelector('#app-error');
-const workspace = document.querySelector('#workspace');
-const backActions = document.querySelector('#back-actions');
+function error(message = '') { const node = $('#app-error'); node.textContent = message; node.hidden = !message; if (message) node.focus(); }
+function show(id) { const order = ['catalog-section', 'address-section', 'shipping-section', 'payment-section', 'result-section']; const active = order.indexOf(id); for (const section of document.querySelectorAll('#store-view > section.content')) section.hidden = section.id !== id; document.querySelectorAll('[data-progress]').forEach((step) => { const index = Number(step.dataset.progress); step.classList.toggle('active', index === active); step.classList.toggle('done', index < active); if (index === active) step.setAttribute('aria-current', 'step'); else step.removeAttribute('aria-current'); }); error(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+function setBusy(button, busy, label) { button.disabled = busy; if (busy) { button.dataset.label = button.textContent; button.textContent = label; } else if (button.dataset.label) button.textContent = button.dataset.label; }
 
-let client;
-let completedRateRequest;
-let selectedRate;
-const externalReference = newExternalReference();
-const localEncodedKey = import.meta.env.VITE_AFRICANIES_ENCODED_KEY?.trim() ?? '';
-
-function newExternalReference() {
-  const unique = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  return `SDK-DEMO-${unique}`;
+function renderCatalog() {
+  $('#catalog').innerHTML = DEMO_PRODUCTS.map((product) => `<article class="product-card">
+    <div class="product-art ${product.id}" aria-hidden="true">${product.name.slice(0, 1)}</div>
+    <div class="product-copy"><small>PRODUCT CLASSIFICATION REQUIRED</small><h3>${product.name}</h3><p>${product.description}</p>
+    <dl><div><dt>Unit weight</dt><dd>${product.weight} kg</dd></div><div><dt>Size</dt><dd>${product.dimensions.length} × ${product.dimensions.width} × ${product.dimensions.height} cm</dd></div></dl>
+    <div class="classification"><label>Search Africanies products<input data-product-search="${product.id}" value="${product.name}"></label><button type="button" class="secondary search-product" data-product="${product.id}">Search</button><select data-product-results="${product.id}" hidden aria-label="Select product classification"></select><p data-product-status="${product.id}" role="status" aria-live="polite">Search and select the closest human-readable product.</p></div>
+    <div class="product-action"><strong>${money(product.price)}</strong><label>Qty <input class="quantity" data-product="${product.id}" type="number" min="0" max="20" step="1" value="${state.cart[product.id] ?? 0}"></label></div></div></article>`).join('');
+  document.querySelectorAll('.quantity').forEach((input) => input.addEventListener('input', () => {
+    state.cart[input.dataset.product] = Math.max(0, Number(input.value)); state.lines = cartLines(state.cart);
+    updateCheckoutState();
+  }));
+  document.querySelectorAll('.search-product').forEach((button) => button.addEventListener('click', () => searchProducts(button.dataset.product, button)));
+  document.querySelectorAll('[data-product-results]').forEach((select) => select.addEventListener('change', () => {
+    const option = select.selectedOptions[0]; if (!option?.value) return;
+    state.classifications[select.dataset.productResults] = { hs_code: option.value, name: option.textContent };
+    $(`[data-product-status="${select.dataset.productResults}"]`).textContent = `Selected ${option.textContent} · HS ${option.value}`;
+    updateCheckoutState();
+  }));
 }
 
-function setError(message = '') {
-  errorRegion.textContent = message;
-  errorRegion.hidden = message === '';
-  if (message) errorRegion.focus();
+function updateCheckoutState() {
+  state.packaging = null; state.rateRequest = null; state.rates = []; state.quote = null; state.selection = null; state.selectedRate = null; state.payment = null; state.purchaseIntent = null; state.externalReference = null; state.purchaseState = 'idle';
+  const totals = cartTotals(state.lines); $('#cart-count').textContent = totals.quantity;
+  $('#checkout-button').disabled = totals.quantity === 0 || state.lines.some((line) => !state.classifications[line.id]);
 }
 
-function setStatus(message) {
-  statusRegion.textContent = message;
-}
-
-function resetAssignedDate() {
-  const minimum = minimumAssignedDate();
-  assignedDateInput.min = minimum;
-  assignedDateInput.value = minimum;
-  assignedDateInput.setCustomValidity('');
-}
-
-function validateAssignedDate() {
-  const minimum = minimumAssignedDate();
-  assignedDateInput.min = minimum;
-  if (isAssignedDateValid(assignedDateInput.value, minimum)) {
-    assignedDateInput.setCustomValidity('');
-    return true;
-  }
-  const message = `Assigned date must be after today. Choose ${minimum} or later.`;
-  assignedDateInput.disabled = false;
-  assignedDateInput.setCustomValidity(message);
-  setError(message);
-  assignedDateInput.focus();
-  return false;
-}
-
-function setBackAction(label, action) {
-  backActions.replaceChildren();
-  if (!label) return;
-  const button = document.createElement('button');
-  button.className = 'secondary compact';
-  button.type = 'button';
-  button.textContent = label;
-  button.addEventListener('click', action);
-  backActions.append(button);
-}
-
-function setConfigurationLocked(locked) {
-  for (const control of setupForm.elements) {
-    if (control !== resetButton) control.disabled = locked;
-  }
-}
-
-function updateSafetyUi() {
-  const live = environmentInput.value === 'live';
-  liveConfirmation.hidden = !live;
-  if (!live) confirmLiveInput.checked = false;
-  safetyBanner.className = `safety ${live ? 'live' : 'test'}`;
-  safetyBanner.replaceChildren();
-  const title = document.createElement('strong');
-  title.textContent = live ? 'LIVE MODE' : 'TEST MODE';
-  const description = document.createElement('span');
-  description.textContent = live
-    ? 'Requests use api.africanies.com and may create real shipments.'
-    : 'Requests use api-sandbox.africaniestest.com.';
-  safetyBanner.append(title, description);
-  startButton.textContent = live ? 'Start LIVE shipment' : 'Start test shipment';
-}
-
-function showBuilder(draft) {
-  setError();
-  flowTitle.textContent = '1. Build shipment';
-  setStatus('Complete the sender, receiver, package, and item fields.');
-  setBackAction('', undefined);
-  const builder = document.createElement('africanies-shipment-builder');
-  builder.client = client;
-  builder.value = draft ?? sampleRateDraft(client.shipmentMode);
-  builder.addEventListener('africanies-complete', (event) => {
-    completedRateRequest = normalizeCompletedRateRequest(event.detail, client.shipmentMode);
-    showRates();
-  }, { once: true });
-  workspace.replaceChildren(builder);
-}
-
-function showRates() {
-  setError();
-  flowTitle.textContent = '2. Select a rate';
-  setStatus('AfricanIES is loading the available services for this shipment.');
-  setBackAction('Back to shipment', () => showBuilder(completedRateRequest));
-  const rates = document.createElement('africanies-rate-selection');
-  rates.client = client;
-  rates.request = completedRateRequest;
-  rates.addEventListener('africanies-rate-selected', () => {
-    setStatus('Rate selected. Continue when you are ready.');
-  });
-  rates.addEventListener('africanies-complete', (event) => {
-    selectedRate = event.detail.rate;
-    preparePurchase();
-  });
-  workspace.replaceChildren(rates);
-}
-
-function preparationMessage(issues) {
-  return issues.map((issue) => `${issue.path}: ${issue.message}`).join(' ');
-}
-
-function preparePurchase() {
-  setError();
-  if (!validateAssignedDate()) return;
-  const prepared = preparePurchaseRequest(completedRateRequest, {
-    assignedDate: assignedDateInput.value,
-    externalReference: externalReferenceInput.value.trim(),
-    rate: selectedRate,
-    shipmentMethodSlug: selectedRate.slug,
-  });
-  if (!prepared.success) {
-    setError(`Purchase could not be prepared. ${preparationMessage(prepared.issues)}`);
-    return;
-  }
-  const needsLegacyPurchaseValidation = prepared.request.currency === undefined;
-
-  let purchaseRequest;
+async function searchProducts(productId, button) {
+  const query = $(`[data-product-search="${productId}"]`).value.trim(); const status = $(`[data-product-status="${productId}"]`);
+  const searchId = (state.productSearches[productId] ?? 0) + 1; state.productSearches[productId] = searchId;
+  delete state.classifications[productId]; updateCheckoutState();
+  if (!query) { status.textContent = 'Enter a product name to search.'; return; }
+  setBusy(button, true, 'Searching…'); status.textContent = 'Searching Africanies products…';
   try {
-    purchaseRequest = completePreparedPurchaseRequest(
-      prepared.request,
-      selectedRate,
-      client.shipmentMode,
-    );
-  } catch (error) {
-    setError(error instanceof Error ? error.message : 'The selected rate does not match this shipment mode.');
-    return;
-  }
-
-  if (client.environment === 'live') {
-    showLivePurchaseGate(purchaseRequest, needsLegacyPurchaseValidation);
-    return;
-  }
-  showPurchase(purchaseRequest, needsLegacyPurchaseValidation);
+    const client = state.client; const response = await client.products.search(query);
+    if (state.productSearches[productId] !== searchId || state.client !== client) return;
+    const results = Array.isArray(response.data) ? response.data : [];
+    if (!results.length) throw new Error('No matching products were returned. Try a broader description.');
+    const select = $(`[data-product-results="${productId}"]`); select.innerHTML = `<option value="">Select a classification…</option>${results.map((item) => `<option value="${html(item.hs_code)}">${html(item.name)}</option>`).join('')}`;
+    select.hidden = false; status.textContent = `${results.length} matching classifications found.`;
+  } catch (cause) { if (state.productSearches[productId] === searchId) status.textContent = cause instanceof Error ? cause.message : 'Product search failed.'; }
+  finally { if (state.productSearches[productId] === searchId) setBusy(button, false); }
 }
 
-function showLivePurchaseGate(request, needsLegacyPurchaseValidation) {
-  flowTitle.textContent = 'Confirm live purchase';
-  setStatus('A second explicit confirmation is required before the live purchase screen is enabled.');
-  setBackAction('Back to rates', showRates);
-  const gate = document.createElement('div');
-  gate.className = 'live-gate';
-  const heading = document.createElement('h3');
-  heading.textContent = 'You are about to use the LIVE API';
-  const message = document.createElement('p');
-  message.textContent = `External reference ${externalReferenceInput.value.trim()} may create a real shipment. After the purchase request is sent, Back or Reset cannot revoke it.`;
-  const confirm = document.createElement('button');
-  confirm.type = 'button';
-  confirm.className = 'danger-button';
-  confirm.textContent = 'I confirm: continue to LIVE purchase';
-  confirm.addEventListener('click', () => showPurchase(request, needsLegacyPurchaseValidation), { once: true });
-  gate.append(heading, message, confirm);
-  workspace.replaceChildren(gate);
-  confirm.focus();
-}
-
-function showPurchase(request, needsLegacyPurchaseValidation = false) {
-  setError();
-  flowTitle.textContent = '3. Purchase shipment';
-  setStatus(client.environment === 'live'
-    ? 'LIVE MODE: review the reference and use the purchase button only when ready.'
-    : 'Review the reference, method, boxes, and date before purchasing.');
-  setBackAction('Back to rates', showRates);
-  const purchase = document.createElement('africanies-purchase-confirmation');
-  if (needsLegacyPurchaseValidation && client.shipmentMode === 'STN') {
-    const canonicalRequest = request;
-    purchase.client = {
-      ...client,
-      shipments: {
-        ...client.shipments,
-        purchase: (_legacyRequest, signal) => client.shipments.purchase(canonicalRequest, signal),
-      },
-    };
-    purchase.request = legacyPurchaseRequestForPresentation(request, client.shipmentMode);
-  } else {
-    purchase.client = client;
-    purchase.request = request;
-  }
-  purchase.addEventListener('africanies-purchased', () => {
-    setStatus('Shipment purchased. Keep the displayed reference and documents.');
-    setBackAction('', undefined);
-  }, { once: true });
-  purchase.addEventListener('africanies-error', (event) => {
-    const error = event.detail;
-    const status = error instanceof AfricaniesError && error.status ? ` HTTP ${error.status}.` : '';
-    const assignedDateMessages = error instanceof AfricaniesError
-      && error.data && typeof error.data === 'object'
-      && Array.isArray(error.data.assigned_date)
-      ? error.data.assigned_date.filter((message) => typeof message === 'string')
-      : [];
-    const detail = assignedDateMessages.length > 0
-      ? ` ${assignedDateMessages.join(' ')} Choose a valid date, then select Back to rates and Continue again. This does not resubmit automatically.`
-      : ` ${error instanceof Error ? error.message : 'Review the response shown below.'}`;
-    setError(`Purchase failed.${status}${detail}`);
-    if (assignedDateMessages.length > 0) {
-      assignedDateInput.disabled = false;
-      assignedDateInput.setCustomValidity(assignedDateMessages.join(' '));
-      setStatus('Purchase was not completed. Correct the assigned date, then return to rates and explicitly continue again.');
-      assignedDateInput.focus();
-    }
-  });
-  workspace.replaceChildren(purchase);
-}
-
-function resetFlow() {
-  client = undefined;
-  completedRateRequest = undefined;
-  selectedRate = undefined;
-  encodedKeyInput.value = localEncodedKey;
-  environmentInput.value = 'test';
-  shipmentModeInput.value = 'SFN';
-  confirmLiveInput.checked = false;
-  resetAssignedDate();
-  externalReferenceInput.value = externalReference;
-  setConfigurationLocked(false);
-  updateSafetyUi();
-  setError();
-  setStatus('Enter your runtime configuration to begin.');
-  flowTitle.textContent = 'Ready to begin';
-  setBackAction('', undefined);
-  workspace.replaceChildren();
-  encodedKeyInput.focus();
-}
-
-environmentInput.addEventListener('change', updateSafetyUi);
-
-setupForm.addEventListener('submit', (event) => {
-  event.preventDefault();
-  setError();
-  const environment = environmentInput.value;
-  if (environment === 'live' && !confirmLiveInput.checked) {
-    setError('Confirm that you understand LIVE mode before continuing.');
-    confirmLiveInput.focus();
-    return;
-  }
-  const encodedKey = encodedKeyInput.value.trim();
-  if (!encodedKey) {
-    setError('Enter the Base64 encoded key.');
-    encodedKeyInput.focus();
-    return;
-  }
-  if (!validateAssignedDate()) return;
-
+$('#login-form').addEventListener('submit', async (event) => {
+  event.preventDefault(); const button = event.submitter; const status = $('#login-status'); const encodedKey = $('#encoded-key').value.trim();
+  state.client = null;
+  status.className = 'message'; status.textContent = 'Checking credential with Africanies sandbox…'; setBusy(button, true, 'Checking…');
   try {
-    client = createAfricaniesClient({
-      environment,
-      shipmentMode: shipmentModeInput.value,
-      auth: { encodedKey },
-    });
-  } catch (error) {
-    setError(error instanceof Error ? error.message : 'The SDK configuration is invalid.');
-    return;
-  }
-
-  encodedKeyInput.value = '';
-  setConfigurationLocked(true);
-  showBuilder();
+    const client = Shipping.createAfricaniesClient({ environment: 'test', shipmentMode: 'SFN', auth: { encodedKey } });
+    const response = await client.carriers.list();
+    if (!response?.success) throw new Error(response?.message || 'Credential check was not accepted.');
+    state.client = client; $('#encoded-key').value = ''; $('#login-view').hidden = true; $('#store-view').hidden = false; renderCatalog();
+  } catch (cause) { status.className = 'message failure'; status.textContent = cause instanceof Error ? cause.message : 'Could not validate this credential.'; }
+  finally { $('#encoded-key').value = ''; if (!state.client) $('#store-view').hidden = true; setBusy(button, false); }
 });
 
-resetButton.addEventListener('click', resetFlow);
+$('#checkout-button').addEventListener('click', () => show('address-section'));
+document.querySelectorAll('[data-back]').forEach((button) => button.addEventListener('click', () => show(button.dataset.back)));
 
-assignedDateInput.addEventListener('input', () => assignedDateInput.setCustomValidity(''));
+$('#address-form').addEventListener('submit', async (event) => {
+  event.preventDefault(); const button = event.submitter; setBusy(button, true, 'Packaging and loading rates…');
+  try {
+    const calculatePackaging = Shipping.calculatePackaging;
+    if (typeof calculatePackaging !== 'function') throw new Error('This SDK build does not yet include automatic packaging. Install the expanded-stabilization build.');
+    const packagingInput = createPackagingInput(state.lines, state.classifications);
+    state.packaging = calculatePackaging(packagingInput.items, packagingInput.settings);
+    const receiver = receiverFromForm(event.currentTarget);
+    state.rateRequest = Shipping.buildRateRequestFromPackaging({
+      addresses: { sender: { ...WAREHOUSE_ADDRESS }, receiver }, shipmentMode: 'SFN', packaging: state.packaging,
+      isInsured: $('#insured').checked ? '1' : '0',
+    });
+    const response = await state.client.shipments.getRates(state.rateRequest);
+    state.rates = response.data; if (!Array.isArray(state.rates) || state.rates.length === 0) throw new Error('No shipping rates were returned for this cart.');
+    state.quote = Shipping.createCheckoutShippingQuote(state.rateRequest, state.packaging, state.rates);
+    renderPackaging(); renderRates(); show('shipping-section');
+  } catch (cause) { error(cause instanceof Error ? cause.message : 'Packaging or rates could not be calculated.'); }
+  finally { setBusy(button, false); }
+});
 
-resetAssignedDate();
-encodedKeyInput.value = localEncodedKey;
-externalReferenceInput.value = externalReference;
-updateSafetyUi();
+function renderPackaging() {
+  const boxes = state.packaging.boxes;
+  $('#packaging').innerHTML = `<div class="allowance-note">Protective allowance is applied to every item dimension. Maximum box weight: 30 kg.</div>${boxes.map((box, index) => `<article class="box-card"><div><small>PACKAGE ${index + 1}</small><h3>${html(box.catalogBoxName || `Box ${index + 1}`)}</h3><p>${html(box.dimensions.length)} × ${html(box.dimensions.width)} × ${html(box.dimensions.height)} cm · ${Number(box.totalWeight).toFixed(2)} kg</p></div><ul>${box.items.map((item) => `<li>${html(item.itemName)} × ${html(item.quantity)} <span>${Number(item.totalWeight).toFixed(2)} kg</span></li>`).join('')}</ul></article>`).join('')}`;
+}
+
+function renderRates() {
+  state.selectedRate = null; $('#rate-button').disabled = true;
+  $('#rates').innerHTML = `<div class="rates-title"><h3>Select shipment carrier</h3><span>STEP 1/2</span></div>${state.rates.map((rate, index) => `<label class="rate-card"><input type="radio" name="rate" value="${index}"><span class="carrier-name"><i aria-hidden="true">A</i><strong>${html(rate.name)}</strong></span><span class="rate-availability"><small>Available</small><b>${html(money(rate.payment_amount, rate.others.currency))}</b></span><span class="transit"><small>Estimated transit time</small><strong>${html(rate.others.min_day)}–${html(rate.others.max_day)} business days</strong></span><span class="select-copy">Select</span></label>`).join('')}`;
+  document.querySelectorAll('input[name="rate"]').forEach((input) => input.addEventListener('change', () => { state.selectedRate = state.rates[Number(input.value)]; state.selection = Shipping.selectCheckoutRate(state.quote, state.selectedRate.slug); state.payment = null; state.purchaseIntent = null; state.externalReference = null; state.purchaseState = 'idle'; $('#rate-button').disabled = false; }));
+}
+
+$('#rate-button').addEventListener('click', () => { renderOrderSummary(); show('payment-section'); });
+function renderOrderSummary() {
+  const totals = cartTotals(state.lines); const shipping = shippingAmount(state.selectedRate); const currency = state.selectedRate.others.currency;
+  $('#order-summary').innerHTML = `<h3>Order summary</h3><div class="summary-row"><span>Products (${totals.quantity})</span><strong>${html(money(totals.subtotal, currency))}</strong></div><div class="summary-row"><span>${html(state.selectedRate.name)} shipping</span><strong>${html(money(shipping, currency))}</strong></div><div class="summary-row total"><span>Total</span><strong>${html(money(totals.subtotal + shipping, currency))}</strong></div>`;
+}
+
+$('#pay-button').addEventListener('click', async (event) => {
+  const button = event.currentTarget; setBusy(button, true, 'Processing PayDemo…'); error();
+  try {
+    if (state.purchaseState === 'uncertain') throw new Error('The previous purchase result is uncertain. Reconcile the existing external reference before retrying.');
+    const totals = cartTotals(state.lines); const orderAmount = totals.subtotal + state.selection.shippingCost;
+    state.payment = payDemoResult($('#payment-outcome').value, { amount: orderAmount, currency: state.selection.currency });
+    if (!state.payment.confirmed) throw new Error(`PayDemo payment was ${state.payment.status}. The shipment was not purchased.`);
+    const prepared = Shipping.preparePurchaseRequest(state.rateRequest, {
+      assignedDate: minimumAssignedDate(), externalReference: state.externalReference ??= `PAYDEMO-${crypto.randomUUID?.() ?? Date.now()}`,
+      rate: state.selectedRate, shipmentMethodSlug: state.selectedRate.slug, fileIsUrl: 1,
+    });
+    if (!prepared.success) throw new Error(prepared.issues.map((issue) => `${issue.path}: ${issue.message}`).join(' '));
+    state.purchaseIntent ??= Shipping.createCheckoutPurchaseIntent(prepared.request, state.selection);
+    state.purchaseState = 'submitting';
+    // PayDemo confirms the full merchandise + delivery total. Africanies only owns
+    // the shipping portion, so the SDK confirmation binds that same host payment
+    // reference to the immutable shipping intent and its selected delivery amount.
+    const response = await Shipping.purchaseAfterPayment(state.client, state.purchaseIntent, { confirmed: true, reference: state.payment.id, confirmedAt: new Date().toISOString(), intentId: state.purchaseIntent.id, amount: state.purchaseIntent.amount, currency: state.purchaseIntent.currency });
+    state.purchaseState = 'purchased'; renderResult(response.data); show('result-section');
+  } catch (cause) {
+    if (state.purchaseState === 'submitting') state.purchaseState = isDefinitivePurchaseFailure(cause) ? 'failed' : 'uncertain';
+    const reconciliation = state.purchaseState === 'uncertain' ? ` The result is uncertain. Reconcile external reference ${state.externalReference} before retrying.` : '';
+    error(`${cause instanceof Error ? cause.message : 'Payment or shipment purchase failed.'}${reconciliation}`);
+  }
+  finally { setBusy(button, false); }
+});
+
+function isDefinitivePurchaseFailure(cause) {
+  if (!(cause instanceof Shipping.AfricaniesError)) return false;
+  if (cause.category === 'validation') return true;
+  return [400, 401, 403, 404, 422, 424].includes(cause.status);
+}
+function safeUrl(value) { try { const url = new URL(value); return url.protocol === 'https:' ? url.href : null; } catch { return null; } }
+const MAX_BASE64_DOCUMENT_BYTES = 10 * 1024 * 1024;
+function base64Url(value) {
+  if (typeof value !== 'string' || !value || !/^[A-Za-z0-9+/]*={0,2}$/.test(value) || value.length % 4 !== 0) return { error: 'Malformed Base64 document' };
+  if (value.length > Math.ceil(MAX_BASE64_DOCUMENT_BYTES / 3) * 4) return { error: 'Base64 document exceeds the 10 MB browser download limit' };
+  try { const decoded = atob(value); if (decoded.length > MAX_BASE64_DOCUMENT_BYTES) return { error: 'Base64 document exceeds the 10 MB browser download limit' }; const bytes = Uint8Array.from(decoded, (character) => character.charCodeAt(0)); const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' })); state.documentUrls.push(url); return { url }; } catch { return { error: 'Malformed Base64 document' }; }
+}
+function documentCard(label, value, isUrl, required = false, notRequested = false) {
+  if (notRequested) return `<div class="document-card unavailable"><span>—</span><strong>${label}</strong><small>Not requested</small></div>`;
+  const href = isUrl === 1 ? safeUrl(value) : null;
+  if (href) return `<a class="document-card" href="${href}" target="_blank" rel="noopener noreferrer"><span>PDF</span><strong>${label}</strong><small>Open document ↗</small></a>`;
+  const decoded = isUrl === 0 && typeof value === 'string' && value ? base64Url(value) : null;
+  if (decoded?.url) return `<a class="document-card" href="${decoded.url}" download="${label.toLowerCase().replaceAll(' ', '-')}.pdf"><span>PDF</span><strong>${label}</strong><small>Download Base64 document</small></a>`;
+  if (decoded?.error) return `<div class="document-card unavailable"><span>!</span><strong>${label}</strong><small>${decoded.error}</small></div>`;
+  return `<div class="document-card unavailable"><span>—</span><strong>${label}</strong><small>${required ? 'Required document unavailable' : 'Not returned'}</small></div>`;
+}
+function renderResult(result) {
+  state.documentUrls.forEach((url) => URL.revokeObjectURL(url)); state.documentUrls = [];
+  const tracking = safeUrl(result.tracking_url);
+  $('#shipment-result').innerHTML = `<div class="tracking-card"><div><small>REFERENCE</small><strong>${html(result.reference)}</strong></div><div><small>TRACKING NUMBER</small><strong>${html(result.tracking_number)}</strong></div>${tracking ? `<a class="primary button-link" href="${html(tracking)}" target="_blank" rel="noopener noreferrer">Track shipment</a>` : ''}</div><div class="panel payment-record"><small>PAYDEMO FULL ORDER + DELIVERY PAYMENT</small><strong>${html(state.payment.id)}</strong><span>${html(money(state.payment.amount, state.payment.currency))} · Confirmed</span></div><h3>Shipment documents</h3><div class="documents">${documentCard('Waybill', result.documents.waybill_doc, result.waybill_is_url)}${documentCard('Commercial invoice', result.documents.invoice_doc, result.invoice_is_url, true)}${documentCard('Insurance certificate', result.documents.insurance_doc, result.insurance_is_url, state.rateRequest?.is_insured === '1', state.rateRequest?.is_insured !== '1')}</div>`;
+}
+
+renderCatalog();

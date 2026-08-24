@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createAfricaniesClient, type AfricaniesTransport, type TransportRequest } from '../src/index.js';
-import { rateRequest } from './fixtures.js';
+import { purchaseRequest, rateRequest } from './fixtures.js';
 
 function recordingTransport() {
   const requests: TransportRequest[] = [];
@@ -34,6 +34,44 @@ describe('Africanies client resources', () => {
     const { transport } = recordingTransport();
     const client = createAfricaniesClient({ shipmentMode: 'SFN', transport });
     expect(() => client.carriers.get(0)).toThrowError(/positive integer/);
+  });
+
+  it('enforces SFN and STN geography at the headless client boundary', async () => {
+    const sfn = recordingTransport();
+    const sfnClient = createAfricaniesClient({ shipmentMode: 'SFN', transport: sfn.transport });
+    const invalidSfn = rateRequest(); invalidSfn.addresses.sender.country = 'US';
+    await expect(sfnClient.shipments.getRates(invalidSfn)).rejects.toMatchObject({ category: 'validation' });
+    expect(sfn.requests).toHaveLength(0);
+    const stn = recordingTransport();
+    const stnClient = createAfricaniesClient({ shipmentMode: 'STN', transport: stn.transport });
+    const invalidStn = rateRequest(); invalidStn.addresses.receiver.country = 'US';
+    await expect(stnClient.shipments.getRates(invalidStn)).rejects.toMatchObject({ category: 'validation' });
+    expect(stn.requests).toHaveLength(0);
+    const invalidPurchase = purchaseRequest(); invalidPurchase.address.sender.country = 'US';
+    await expect(sfnClient.shipments.purchase(invalidPurchase)).rejects.toMatchObject({ category: 'validation' });
+  });
+
+  it('rejects invalid physical shipment data before transport', async () => {
+    const recorded = recordingTransport();
+    const client = createAfricaniesClient({ shipmentMode: 'SFN', transport: recorded.transport });
+    const invalidRate = rateRequest();
+    invalidRate.boxes[0]!.items[0]!.quantity = 1.5;
+    invalidRate.boxes[0]!.items[0]!.weight = 0;
+    await expect(client.shipments.getRates(invalidRate)).rejects.toMatchObject({
+      category: 'validation',
+      data: expect.arrayContaining([
+        expect.objectContaining({ path: 'boxes.0.items.0.weight' }),
+        expect.objectContaining({ path: 'boxes.0.items.0.quantity' }),
+      ]),
+    });
+    const invalidPurchase = purchaseRequest();
+    invalidPurchase.boxes[0]!.weight = 1;
+    invalidPurchase.boxes[0]!.items[0]!.weight = 2;
+    await expect(client.shipments.purchase(invalidPurchase)).rejects.toMatchObject({
+      category: 'validation',
+      data: expect.arrayContaining([expect.objectContaining({ path: 'boxes.0.weight' })]),
+    });
+    expect(recorded.requests).toHaveLength(0);
   });
 
   it('requires secure absolute custom API origins except for local development', () => {

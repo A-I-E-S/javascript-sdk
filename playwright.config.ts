@@ -10,11 +10,11 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:4173',
     trace: 'on-first-retry',
   },
-  webServer: {
-    command: 'npm run preview -- --host 127.0.0.1',
-    port: 4173,
-    reuseExistingServer: !process.env.CI,
-  },
+  webServer: [
+    { command: 'npx vite --host 127.0.0.1 --port 4173 --strictPort', port: 4173, reuseExistingServer: !process.env.CI },
+    { command: 'npx vite examples/vanilla --host 127.0.0.1 --port 4174 --strictPort', port: 4174, reuseExistingServer: !process.env.CI },
+    { command: 'npm --prefix examples/vanilla run preview -- --host 127.0.0.1 --port 4175 --strictPort', port: 4175, reuseExistingServer: !process.env.CI },
+  ],
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'firefox', use: { ...devices['Desktop Firefox'] } },

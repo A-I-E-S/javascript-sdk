@@ -15,8 +15,8 @@ const browserRateResponse = { success: true, status_code: 200, message: 'ok', da
 }] };
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/');
-  await page.addScriptTag({ url: '/africanies-shipping.global.js' });
+  await page.goto('/browser-test.html', { waitUntil: 'domcontentloaded' });
+  await page.addScriptTag({ url: '/dist/africanies-shipping.global.js' });
 });
 
 test('global build exposes the client and registers every custom element', async ({ page }) => {
@@ -49,7 +49,7 @@ test('global build exposes the client and registers every custom element', async
 });
 
 test('test-mode state remains visible in desktop and mobile browsers', async ({ page }) => {
-  await page.setContent('<africanies-shipment-builder></africanies-shipment-builder>');
+  await page.evaluate(() => { document.body.innerHTML = '<africanies-shipment-builder></africanies-shipment-builder>'; });
   const builder = page.locator('africanies-shipment-builder');
 
   await expect(builder).toHaveAttribute('data-environment', 'test');

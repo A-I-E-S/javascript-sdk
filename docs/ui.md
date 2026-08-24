@@ -45,7 +45,7 @@ builder.addEventListener('africanies-complete', (event) => {
 });
 ```
 
-The builder can start empty or with consumer-supplied data. It emits `africanies-change` as its draft changes and blocks completion until required fields and mode-specific units validate.
+The builder can start empty or with consumer-supplied data. It emits `africanies-change` as its draft changes and blocks completion until required fields and mode-specific units validate. In the Items step, users search the Africanies Products API by a human-readable description and select a returned product; the component supplies that result's HS code without exposing a manual HS-code input. A host may still pre-populate an already classified item programmatically.
 
 ## Rate Selection
 
@@ -77,7 +77,7 @@ In `0.2.0`, Stage 1 completes numeric box/item fields through `completeRateReque
 
 `preparePurchaseRequest` rejects an `assigned_date` that is not a real `YYYY-MM-DD` calendar date strictly after today and returns field-addressable issues before Stage 3 is mounted. Stage 3 repeats that validation immediately before submission. When present, `file_is_url` must be the number `0` or `1`; string flags such as `'0'` and `'1'` are invalid. The adapter's optional `referenceDate` is for deterministic tests and should be omitted in production.
 
-Waybill and insurance documents can be unavailable (`null`). The invoice document is required. Stage 3 labels unavailable documents instead of producing invalid links. When a document's corresponding `*_is_url` flag is `0`, Stage 3 reports that Base64 data was returned for programmatic consumption without rendering, linking, or logging the Base64 content.
+Waybill and insurance documents can be unavailable (`null`). The invoice document is required. Stage 3 labels unavailable documents instead of producing invalid links and labels insurance as not requested when `is_insured` is not `"1"`. When a document's corresponding `*_is_url` flag is `0`, Stage 3 reports that Base64 data was returned for programmatic consumption without rendering, linking, or logging the Base64 content. Remote tracking and document links must use HTTPS; HTTP links are accepted only for loopback development hosts.
 
 ## Test mode
 
@@ -97,7 +97,7 @@ africanies-shipment-builder {
 }
 ```
 
-Layouts are mobile-first, controls use touch-friendly sizing, state is never communicated by color alone, and async/error states use semantic live or alert regions.
+Layouts use responsive, touch-friendly controls, visible keyboard focus, semantic progress and async/error regions, and reduced-motion handling. Their hierarchy is informed by the canonical Africanies application, but the package does not claim pixel parity or replace consumer accessibility testing in the application's supported browsers and assistive technologies.
 
 ## Controller-only usage
 

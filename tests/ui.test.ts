@@ -32,6 +32,7 @@ describe('UI contracts', () => {
     request.units = { mass: 'LBS', dimension: 'inches' };
     request.last_mile_delivery = false;
     request.pickup = true;
+    request.addresses.receiver.country = 'Nigeria';
     expect(validateRateRequest(request, 'STN')).toEqual({ valid: true, issues: [] });
   });
 
@@ -41,6 +42,7 @@ describe('UI contracts', () => {
     draft.boxes[0]!.length = '12.5';
     draft.boxes[0]!.items[0]!.weight = '1.25';
     draft.boxes[0]!.items[0]!.quantity = '2';
+    draft.boxes[0]!.weight = '2.5';
     delete draft.boxes[0]!.items[0]!.price;
     delete draft.boxes[0]!.items[0]!.product_hs_code_description;
     expect(validateRateRequest(draft, 'SFN').valid).toBe(true);
@@ -99,6 +101,7 @@ describe('UI contracts', () => {
     request.units = { mass: 'LBS', dimension: 'inches' };
     request.last_mile_delivery = false;
     request.pickup = true;
+    request.addresses.receiver.country = 'NG';
     const rate = shipmentRate({
       slug: 'africanies_air_express_stn',
       mode: 'stn',
@@ -114,6 +117,15 @@ describe('UI contracts', () => {
         currency: 'USD', shipment_method_slug: 'africanies_air_express_stn',
       });
     }
+  });
+
+  it('enforces SFN sender and STN receiver geography before rates and purchase', () => {
+    const rate = rateRequest();
+    rate.addresses.sender.country = 'US';
+    expect(validateRateRequest(rate, 'SFN').issues).toContainEqual(expect.objectContaining({ path: 'addresses.sender.country' }));
+    const purchase = purchaseRequest();
+    purchase.address.receiver.country = 'US';
+    expect(validatePurchaseRequest(purchase, 'STN', new Date(2026, 7, 18)).issues).toContainEqual(expect.objectContaining({ path: 'address.receiver.country' }));
   });
 
   it('emits numeric file flags and supplied item file references only', () => {

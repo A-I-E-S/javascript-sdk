@@ -1,89 +1,53 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="AfricanIES Shipping vanilla JavaScript SDK example">
-    <title>AfricanIES Shipping SDK demo</title>
-    <script type="module" src="/src/main.js"></script>
-  </head>
-  <body>
-    <header class="hero">
-      <div class="container">
-        <p class="eyebrow">Vanilla JavaScript example</p>
-        <h1>AfricanIES Shipping</h1>
-        <p>Configure the SDK, build a shipment, select a rate, and purchase it.</p>
-      </div>
-    </header>
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Africanies Shipping SDK mini-commerce UAT">
+  <title>Africanies Store — SDK UAT</title><script type="module" src="/src/main.js"></script>
+</head>
+<body>
+  <header class="site-header"><a class="brand" href="#">Africanies <span>Store</span></a><div class="test-badge">SANDBOX · SFN</div><div class="cart-chip"><span id="cart-count">0</span> items</div></header>
+  <main>
+    <section id="login-view" class="login-view">
+      <form id="login-form" class="panel auth-card">
+        <p class="eyebrow">SDK user acceptance testing</p><h1>Connect to the sandbox</h1>
+        <p>Enter your Base64 API credential. It stays in page memory and is checked with a safe carrier request.</p>
+        <label>Base64 API credential<input id="encoded-key" type="password" autocomplete="off" spellcheck="false" required></label>
+        <button class="primary" type="submit">Validate and enter store</button>
+        <p id="login-status" class="message" role="status" aria-live="polite"></p>
+      </form>
+    </section>
 
-    <main class="container layout">
-      <aside class="setup" aria-labelledby="setup-title">
-        <form id="setup-form">
-          <h2 id="setup-title">Runtime configuration</h2>
-          <p class="hint">Credentials stay in this page's memory only. They are never saved or logged.</p>
+    <section id="store-view" hidden>
+      <div class="hero"><p class="eyebrow">Ship from Nigeria</p><h1>Discover Nigerian goods.<br>Test a complete checkout.</h1><p>Choose products, package the cart, compare live sandbox rates and complete a PayDemo payment.</p></div>
+      <nav class="steps" aria-label="Checkout progress"><span class="active" data-progress="0" aria-current="step"><b>1</b> Cart</span><span data-progress="1"><b>2</b> Delivery</span><span data-progress="2"><b>3</b> Shipping</span><span data-progress="3"><b>4</b> PayDemo</span><span data-progress="4"><b>5</b> Tracking</span></nav>
+      <section id="catalog-section" class="content"><div class="section-heading"><div><p class="eyebrow">Demo catalogue</p><h2>Select products</h2></div><p>Weights shown are unit weights.</p></div><div id="catalog" class="catalog"></div><button id="checkout-button" class="primary wide" disabled>Continue to delivery</button></section>
 
-          <label>
-            Environment
-            <select id="environment" name="environment">
-              <option value="test" selected>Test / sandbox</option>
-              <option value="live">Live / production</option>
-            </select>
-          </label>
-
-          <label>
-            Shipment mode
-            <select id="shipment-mode" name="shipmentMode">
-              <option value="SFN" selected>SFN</option>
-              <option value="STN">STN</option>
-            </select>
-          </label>
-
-          <label>
-            Base64 encoded key
-            <input id="encoded-key" name="encodedKey" type="password" autocomplete="off" spellcheck="false" required>
-          </label>
-
-          <label>
-            External reference
-            <input id="external-reference" name="externalReference" type="text" required>
-          </label>
-
-          <label>
-            Assigned date
-            <input id="assigned-date" name="assignedDate" type="date" required>
-          </label>
-
-          <div id="live-confirmation" class="live-confirmation" hidden>
-            <strong>Live API selected</strong>
-            <p>This can create real shipments and charges in your AfricanIES account.</p>
-            <label class="check-row">
-              <input id="confirm-live" type="checkbox">
-              I understand and want to use the LIVE API.
-            </label>
-          </div>
-
-          <button id="start-button" class="primary" type="submit">Start test shipment</button>
-          <button id="reset-button" class="secondary" type="button">Reset flow</button>
-          <p class="reset-warning">Reset and Back only change this local screen. They cannot revoke a purchase request after it has been sent.</p>
+      <section id="address-section" class="content" hidden><div class="section-heading"><div><p class="eyebrow">Delivery</p><h2>Where should we send it?</h2></div><button class="text-button" data-back="catalog-section">Back to cart</button></div>
+        <div class="warehouse-note"><strong>Sender:</strong> Africanies Demo Warehouse, Lagos, Nigeria (fixed SFN origin)</div>
+        <form id="address-form" class="address-grid">
+          <label>First name<input name="first_name" value="Jane" required></label><label>Last name<input name="last_name" value="Smith" required></label>
+          <label>Email<input name="email" type="email" value="jane@example.com" required></label><label>Phone<input name="phone" value="12025550123" required></label>
+          <label>Country code<input name="country" value="US" maxlength="2" required></label><label>State<input name="state" value="MA" required></label>
+          <label>City<input name="city" value="Boston" required></label><label>ZIP / postal code<input name="zip_code" value="02125" required></label>
+          <label class="span-2">Street address<input name="address" value="17 Maryland Street, Boston, MA" required></label>
+          <label class="span-2">Landmark<input name="address_landmark" value="Near the park" required></label>
+          <input name="longitude" type="hidden" value="-71.0598"><input name="latitude" type="hidden" value="42.3601">
+          <label class="check span-2"><input id="insured" type="checkbox"> Add shipment insurance</label>
+          <button class="primary span-2" type="submit">Calculate packaging and rates</button>
         </form>
-      </aside>
-
-      <section class="flow" aria-labelledby="flow-title">
-        <div id="safety-banner" class="safety test" role="status">
-          <strong>TEST MODE</strong>
-          <span>Requests use api-sandbox.africaniestest.com.</span>
-        </div>
-        <div class="flow-heading">
-          <div>
-            <p class="eyebrow">Shipping flow</p>
-            <h2 id="flow-title">Ready to begin</h2>
-          </div>
-          <div id="back-actions" class="back-actions"></div>
-        </div>
-        <div id="app-status" class="status" role="status" aria-live="polite">Enter your runtime configuration to begin.</div>
-        <div id="app-error" class="error" role="alert" tabindex="-1" hidden></div>
-        <div id="workspace"></div>
       </section>
-    </main>
-  </body>
-</html>
+
+      <section id="shipping-section" class="content" hidden><div class="section-heading"><div><p class="eyebrow">Automatic packaging</p><h2>Packages and shipping rates</h2></div><button class="text-button" data-back="address-section">Edit address</button></div>
+        <div id="packaging" class="packaging"></div><div id="rates" class="rates"></div><button id="rate-button" class="primary wide" disabled>Continue to PayDemo</button>
+      </section>
+
+      <section id="payment-section" class="content" hidden><div class="section-heading"><div><p class="eyebrow">Fake payment gateway</p><h2>PayDemo</h2></div><button class="text-button" data-back="shipping-section">Change shipping</button></div>
+        <div class="payment-layout"><div class="panel"><p class="paydemo-logo">Pay<span>Demo</span></p><p>No real money or payment details are used.</p><label>Simulated result<select id="payment-outcome"><option value="success">Successful payment</option><option value="failed">Failed payment</option><option value="cancelled">Cancelled payment</option></select></label><button id="pay-button" class="primary wide">Pay with PayDemo</button></div><div id="order-summary" class="panel"></div></div>
+      </section>
+
+      <section id="result-section" class="content" hidden><div class="success-mark">✓</div><p class="eyebrow">Shipment purchased</p><h2>Your shipment is on its way</h2><div id="shipment-result"></div></section>
+      <p id="app-error" class="global-error" role="alert" tabindex="-1" hidden></p>
+    </section>
+  </main>
+</body></html>

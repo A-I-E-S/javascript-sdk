@@ -19,6 +19,31 @@ test.beforeEach(async ({ page }) => {
   await page.addScriptTag({ url: '/dist/africanies-shipping.global.js' });
 });
 
+test('packed standalone fixture completes all three elements without network and gates payment', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'chromium', 'One browser proves the packaged fixture journey; element behavior retains its full matrix.');
+  const external: string[] = [];
+  await page.route('**/*', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.protocol === 'http:' && url.hostname === '127.0.0.1' && url.port === '4173') return route.continue();
+    external.push(url.href); await route.abort('blockedbyclient');
+  });
+  await page.goto('/examples/elements-standalone/');
+  await page.getByRole('button', { name: 'Start' }).click();
+  const builder = page.locator('africanies-shipment-builder');
+  await expect(builder.getByRole('heading', { name: 'Create shipment' })).toBeVisible();
+  expect(await builder.evaluate((element) => element.constructor === customElements.get('africanies-shipment-builder'))).toBe(true);
+  for (let step = 0; step < 3; step += 1) await builder.getByRole('button', { name: 'Continue' }).click();
+  await builder.getByRole('button', { name: 'Create shipment & review rates' }).click();
+  const rates = page.locator('africanies-rate-selection'); await expect(rates.getByText('Fixture Air')).toBeVisible();
+  await rates.getByRole('button', { name: 'Select', exact: true }).click(); await rates.getByRole('button', { name: 'Continue' }).click();
+  await page.locator('#outcome').selectOption('failed'); await page.locator('#confirm-payment').click();
+  await expect(page.locator('#payment-status')).toContainText('No purchase element was mounted'); await expect(page.locator('africanies-purchase-confirmation')).toHaveCount(0);
+  await page.locator('#outcome').selectOption('success'); await page.locator('#confirm-payment').click();
+  const purchase = page.locator('africanies-purchase-confirmation'); await expect(purchase.getByRole('heading', { name: 'Purchase shipment' })).toBeVisible();
+  await purchase.getByRole('button', { name: 'Purchase shipment' }).click(); await expect(purchase.getByText('FIXTURE-TRACKING')).toBeVisible();
+  expect(external).toEqual([]);
+});
+
 test('global build exposes the client and registers every custom element', async ({ page }) => {
   const result = await page.evaluate(() => {
     const sdk = (globalThis as typeof globalThis & {

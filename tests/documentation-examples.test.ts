@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
+import { tomorrowLocal } from '../examples/elements-standalone/date.js';
 
 const source = (path: string) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
@@ -21,9 +22,20 @@ describe('published documentation examples', () => {
   });
 
   it('uses current address and nested purchase-document contracts', async () => {
-    const [resources, standalone] = await Promise.all([source('examples/headless-node/resources.mjs'), source('examples/elements-standalone/main.js')]);
+    const [resources, standalone, automatic] = await Promise.all([source('examples/headless-node/resources.mjs'), source('examples/elements-standalone/main.js'), source('examples/headless-node/automatic-checkout.mjs')]);
     for (const field of ['first_name','last_name','email','phone','address_in_detail','zip_code','type']) expect(resources).toContain(field);
     expect(standalone).toMatch(/documents:\{waybill_doc:null,insurance_doc:null,invoice_doc:/);
+    expect(automatic).toMatch(/documents:\{waybill_doc:null,insurance_doc:null,invoice_doc:/);
+    expect(automatic).not.toMatch(/tracking_url:[^}]+,waybill_doc:/);
+  });
+
+  it('calculates tomorrow from a noon-normalized local calendar date', () => {
+    const originalTimezone = process.env.TZ;
+    process.env.TZ = 'Pacific/Kiritimati'; // UTC+14 exercises the positive-offset midnight boundary.
+    try {
+      expect(tomorrowLocal(new Date(2026, 7, 24, 23, 59, 59))).toBe('2026-08-25');
+      expect(tomorrowLocal(new Date(2026, 11, 31, 0, 1))).toBe('2027-01-01');
+    } finally { process.env.TZ = originalTimezone; }
   });
 
   it('executes every controller and previously name-only contract export', async () => {

@@ -9,6 +9,14 @@ test('minimum assigned date advances across calendar boundaries', () => {
   assert.equal(minimumAssignedDate(new Date(2026, 11, 31, 23, 59)), '2027-01-01');
 });
 
+test('catalog exposes the approved demo product display names', () => {
+  assert.deepEqual(DEMO_PRODUCTS.map(({ name }) => name), [
+    'Safty headgear',
+    'Handkerchiefs made of cotton',
+    'Handbags',
+  ]);
+});
+
 test('cart preserves configured unit measurements and calculates line totals', () => {
   const lines = cartLines({ headgear: 2, dress: 1 });
   assert.equal(lines.length, 2); assert.equal(lines[0].weight, 0.8); assert.equal(lines[0].quantity, 2);

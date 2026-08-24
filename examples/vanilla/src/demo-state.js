@@ -6,9 +6,9 @@ export const WAREHOUSE_ADDRESS = Object.freeze({
 });
 
 export const DEMO_PRODUCTS = Object.freeze([
-  { id: 'headgear', name: 'Protective head gear', description: 'Lightweight protective head gear', hsCode: '6506100000', price: 18500, weight: 0.8, dimensions: { length: 28, width: 24, height: 18 }, origin: 'NG' },
-  { id: 'dress', name: 'Cotton dress', description: 'Women’s woven cotton dress', hsCode: '6204420000', price: 32000, weight: 0.55, dimensions: { length: 32, width: 24, height: 5 }, origin: 'NG' },
-  { id: 'bag', name: 'Leather travel bag', description: 'Handmade leather travel bag', hsCode: '4202910000', price: 48000, weight: 1.4, dimensions: { length: 45, width: 30, height: 20 }, origin: 'NG' },
+  { id: 'headgear', name: 'Safty headgear', description: 'Lightweight Safty headgear', hsCode: '6506100000', price: 18500, weight: 0.8, dimensions: { length: 28, width: 24, height: 18 }, origin: 'NG' },
+  { id: 'dress', name: 'Handkerchiefs made of cotton', description: 'Cotton handkerchiefs', hsCode: '6204420000', price: 32000, weight: 0.55, dimensions: { length: 32, width: 24, height: 5 }, origin: 'NG' },
+  { id: 'bag', name: 'Handbags', description: 'Handmade handbags', hsCode: '4202910000', price: 48000, weight: 1.4, dimensions: { length: 45, width: 30, height: 20 }, origin: 'NG' },
 ]);
 
 export const DEMO_PACKAGING_SETTINGS = Object.freeze({

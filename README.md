@@ -46,11 +46,23 @@ Runtime Base64 credentials remain the selected integration model for the current
 - `@africanies/shipping/elements` — native custom elements
 - `@africanies/shipping/browser` — client, controllers, and auto-registering elements for browser ESM
 
-Detailed guides are under [`docs/`](./docs/).
+Detailed guides are under [`docs/`](./docs/), including [checkout packaging](./docs/checkout-packaging.md).
 
 Version `0.2.0` corrects shipment wire types based on observed rate and purchase payloads. It contains breaking TypeScript and rate-to-purchase adapter changes; see [the migration guide](./docs/migrating-to-0.2.md) and [changelog](./CHANGELOG.md).
 
 Some implemented request details intentionally follow owner-confirmed sandbox evidence that differs from the public API documentation. Review [the API contract notes](./docs/api-contract.md); do not infer that these variances have been corrected in the public API/OpenAPI description.
+
+## Checkout and packaging
+
+`calculatePackaging()` is an optional host-facing preprocessor. Automatic mode is the new helper's default: it applies the configured allowance to every item's length, width, and height, performs deterministic three-dimensional placement, observes the global and per-box weight limits, and returns the existing `RateBox[]` contract plus a packaging breakdown. A host can instead pass `{ mode: 'manual', boxes }`; the existing builder and direct client methods are unchanged.
+
+Item `weight` is always unit weight. The backend line weight is `quantity × weight`; the generated box weight is the combined contents and configured empty-box weight. Do not send the multiplied line weight as an item's unit weight.
+
+`buildRateRequestFromPackaging()` adapts a complete result to the existing rates API, `selectCheckoutRate()` returns a validated numeric shipping cost, and `purchaseAfterPayment()` requires an explicit host payment confirmation before delegating to the existing purchase API. The low-level `client.shipments.purchase()` remains available for integrations that own their orchestration.
+
+SFN means Ship From Nigeria and requires a Nigerian sender. STN means Ship To Nigeria and requires a Nigerian receiver. The UI validators enforce these invariants before rates and purchase.
+
+The [vanilla UAT demo](./examples/vanilla/) is a test-mode, SFN-only mini checkout. Its Base64 credential is entered at runtime and kept in memory only.
 
 ## Development
 

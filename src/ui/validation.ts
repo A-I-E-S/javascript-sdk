@@ -18,6 +18,25 @@ export interface ValidationResult {
   issues: ValidationIssue[];
 }
 
+function isNigeria(value: unknown): boolean {
+  return typeof value === 'string' && ['NG', 'NGA', 'NIGERIA'].includes(value.trim().toUpperCase());
+}
+
+export function validateShipmentGeography(
+  shipmentMode: ShipmentMode,
+  addresses: ShipmentRateDraft['addresses'] | ShipmentRateRequest['addresses'] | ShipmentPurchaseRequest['address'],
+  root: 'addresses' | 'address' = 'addresses',
+): ValidationIssue[] {
+  const role = shipmentMode === 'SFN' ? 'sender' : 'receiver';
+  if (isNigeria(addresses?.[role]?.country)) return [];
+  return [{
+    path: `${root}.${role}.country`,
+    message: shipmentMode === 'SFN'
+      ? 'SFN means Ship From Nigeria; sender country must be Nigeria.'
+      : 'STN means Ship To Nigeria; receiver country must be Nigeria.',
+  }];
+}
+
 function requiredString(value: unknown, path: string, issues: ValidationIssue[]): void {
   if (typeof value !== 'string' || value.trim() === '') {
     issues.push({ path, message: 'This field is required.' });
@@ -186,6 +205,7 @@ export function validateRateRequest(
 ): ValidationResult {
   const issues: ValidationIssue[] = [];
   validateAddresses(request.addresses, 'addresses', issues, 'rate');
+  issues.push(...validateShipmentGeography(shipmentMode, request.addresses, 'addresses'));
   issues.push(...validateShipmentUnits(request.units, shipmentMode));
   const expectedPreferences = shipmentMode === 'SFN'
     ? { lastMileDelivery: true, pickup: false }
@@ -276,6 +296,7 @@ export function validatePurchaseRequest(
 ): ValidationResult {
   const issues: ValidationIssue[] = [];
   validateAddresses(request.address, 'address', issues, 'purchase');
+  issues.push(...validateShipmentGeography(shipmentMode, request.address, 'address'));
   issues.push(...validateShipmentUnits(request.units, shipmentMode));
   const expectedCurrency = shipmentMode === 'SFN' ? 'NGN' : 'USD';
   if (request.currency !== expectedCurrency) {

@@ -20,6 +20,7 @@ export {
   validatePurchaseRequest,
   validateRateRequest,
   validateShipmentUnits,
+  validateShipmentGeography,
 } from './ui/validation.js';
 export type {
   ItemFileReferences,

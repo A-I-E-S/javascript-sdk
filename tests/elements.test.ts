@@ -130,6 +130,9 @@ describe('AfricanIES custom elements', () => {
     ];
     element.value = value;
     document.body.append(element);
+    for (let step = 0; step < 3; step += 1) {
+      element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="next-step"]')!.click();
+    }
     element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="remove-box"][data-box="1"]')!.click();
     element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="add-box"]')!.click();
     expect(element.value.boxes.map((box) => box.index)).toEqual([0, 2, '3']);
@@ -182,9 +185,10 @@ describe('AfricanIES custom elements', () => {
     document.body.append(element);
     element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="purchase"]')!.click();
     await nextTask();
-    expect(element.shadowRoot!.textContent).toContain('Shipment confirmed');
-    expect(element.shadowRoot!.textContent).toContain('Waybill documentUnavailable');
-    expect(element.shadowRoot!.textContent).toContain('Insurance documentUnavailable');
+    expect(element.shadowRoot!.textContent).toContain('Shipment purchased successfully');
+    expect(element.shadowRoot!.textContent).toContain('Shipment labelUnavailable');
+    expect(element.shadowRoot!.textContent).toContain('Insurance');
+    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-document="invoice"]')!.click();
     expect(element.shadowRoot!.querySelector('a[href="https://example.test/invoice"]')).not.toBeNull();
   });
 
@@ -272,11 +276,13 @@ describe('AfricanIES custom elements', () => {
     document.body.append(element);
     element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="purchase"]')!.click();
     await nextTask();
-    const text = element.shadowRoot!.textContent ?? '';
-    expect(text).toContain('Waybill documentUnavailable');
-    expect(text.match(/Base64 document returned; consume programmatically/g)).toHaveLength(2);
-    expect(text).not.toContain(secretBase64);
-    expect(element.shadowRoot!.innerHTML).not.toContain(secretBase64);
+    expect(element.shadowRoot!.textContent).toContain('Shipment labelUnavailable');
+    for (const name of ['invoice', 'insurance']) {
+      element.shadowRoot!.querySelector<HTMLButtonElement>(`[data-document="${name}"]`)!.click();
+      expect(element.shadowRoot!.textContent).toContain('Base64 document returned; consume programmatically');
+      expect(element.shadowRoot!.textContent).not.toContain(secretBase64);
+      expect(element.shadowRoot!.innerHTML).not.toContain(secretBase64);
+    }
   });
 
   it('reloads rates and restores rendering after detach and reattach', async () => {

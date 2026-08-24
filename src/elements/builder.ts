@@ -69,6 +69,7 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
   #client: AfricaniesClient | undefined;
   #value: ShipmentRateDraft | undefined;
   #issues: ValidationIssue[] = [];
+  #step = 0;
 
   get client(): AfricaniesClient | undefined { return this.#client; }
   set client(value: AfricaniesClient | undefined) {
@@ -98,29 +99,43 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
     this.root.innerHTML = `
       <style>${sharedStyles}
         .section-title { align-items: center; display: flex; justify-content: space-between; }
-        .box { border-left: 4px solid var(--africanies-accent); }
+        .box { border:1px solid var(--africanies-border); border-top:3px solid var(--africanies-mode); }
         .item { background: var(--africanies-surface); border-radius: 10px; padding: 14px; }
         .issue-list { margin: 0; padding-left: 20px; }
         .field-error { color: var(--africanies-danger); font-size: 12px; font-weight: 650; }
-      </style>
-      <form class="shell" novalidate>
-        <div class="topline"><div><h2>Build your shipment</h2><p class="muted">Sender, receiver, boxes and customs details</p></div>${testModeMarkup(this.environment)}</div>
+        .panel-heading { margin-bottom:20px; }
+        .summary-pair { display:grid; gap:16px; grid-template-columns:repeat(2,minmax(0,1fr)); }
+        .summary-value { font-size:14px; margin:5px 0 0; }
+        @media(max-width:640px){.summary-pair{grid-template-columns:1fr}}
+      </style><form class="shell" novalidate>
+        <div class="topline"><div><h2>Create shipment</h2><p class="muted">Complete each section, review the shipment, then request rates.</p></div>${testModeMarkup(this.environment)}</div>
+        ${this.renderWorkflow()}
         ${this.#issues.length ? `<div class="alert error" role="alert"><strong>Please review these fields</strong><ul class="issue-list">${this.#issues.slice(0, 8).map((issue) => `<li>${escapeHtml(issue.path)}: ${escapeHtml(issue.message)}</li>`).join('')}</ul></div>` : ''}
-        <div class="stack">
-          ${this.renderAddress('sender', value.addresses.sender)}
-          ${this.renderAddress('receiver', value.addresses.receiver)}
-          <section class="card"><div class="section-title"><div><h3>Packages</h3><p class="muted">Add every box and item being shipped.</p></div><button class="secondary" type="button" data-action="add-box">Add box</button></div><div class="stack">${value.boxes.map((box, index) => this.renderBox(box, index)).join('')}</div></section>
-          <section class="card"><h3>Delivery preferences</h3><div class="grid">
+        <div class="stack" data-stage="${this.#step}">
+          ${this.#step === 0 ? `<section class="card"><div class="panel-heading"><h3>Drop-off method</h3><p class="muted">Delivery behavior is determined by the ${this.shipmentMode} API contract.</p></div><div class="grid">
             <label>Dimension unit<input value="${escapeHtml(value.units.dimension)}" readonly></label>
             <label>Mass unit<input value="${escapeHtml(value.units.mass)}" readonly></label>
             <label>Last-mile delivery<input value="${value.last_mile_delivery ? 'Enabled' : 'Disabled'}" readonly></label>
             <label>Pickup<input value="${value.pickup ? 'Enabled' : 'Disabled'}" readonly></label>
             <label>Insurance<select data-field="is_insured"><option value="0" ${value.is_insured !== '1' ? 'selected' : ''}>No insurance</option><option value="1" ${value.is_insured === '1' ? 'selected' : ''}>Add insurance</option></select></label>
-          </div></section>
+          </div></section>` : ''}
+          ${this.#step === 1 ? this.renderAddress('sender', value.addresses.sender) : ''}
+          ${this.#step === 2 ? this.renderAddress('receiver', value.addresses.receiver) : ''}
+          ${this.#step === 3 ? `<section class="card"><div class="section-title"><div><h3>What are you shipping?</h3><p class="muted">Item weight is unit weight. Africanies calculates each line as quantity × unit weight.</p></div><button class="secondary" type="button" data-action="add-box">Add new box</button></div><div class="stack">${value.boxes.map((box, index) => this.renderBox(box, index)).join('')}</div></section>` : ''}
+          ${this.#step === 4 ? this.renderSummary(value) : ''}
         </div>
-        <div class="actions"><button type="submit" class="primary">Review rates</button></div>
+        <div class="actions">${this.#step > 0 ? '<button type="button" class="secondary" data-action="previous-step">Back</button>' : ''}${this.#step < 4 ? '<button type="button" class="primary" data-action="next-step">Continue</button>' : '<button type="submit" class="primary">Create shipment &amp; review rates</button>'}</div>
       </form>`;
     this.bind();
+  }
+
+  private renderWorkflow(): string {
+    return `<nav class="workflow" aria-label="Shipment creation progress">${['Drop-off', 'Sender', 'Receiver', 'Items', 'Summary'].map((label, index) => `<div class="workflow-step ${index < this.#step ? 'done' : index === this.#step ? 'active' : ''}" ${index === this.#step ? 'aria-current="step"' : ''}><span>${index < this.#step ? '✓' : index + 1}</span><b>${label}</b></div>`).join('')}</nav>`;
+  }
+
+  private renderSummary(value: ShipmentRateDraft): string {
+    const itemCount = value.boxes.reduce((sum, box) => sum + box.items.reduce((count, item) => count + Number(item.quantity || 0), 0), 0);
+    return `<section class="card stack"><div><h3>Shipment summary</h3><p class="muted">Review the shipment details before loading carriers.</p></div><div class="summary-pair"><article class="card"><strong>Sender</strong><p class="summary-value">${escapeHtml(value.addresses.sender.first_name)} ${escapeHtml(value.addresses.sender.last_name)}<br>${escapeHtml(value.addresses.sender.address)}, ${escapeHtml(value.addresses.sender.city)}<br>${escapeHtml(value.addresses.sender.country)}</p></article><article class="card"><strong>Receiver</strong><p class="summary-value">${escapeHtml(value.addresses.receiver.first_name)} ${escapeHtml(value.addresses.receiver.last_name)}<br>${escapeHtml(value.addresses.receiver.address)}, ${escapeHtml(value.addresses.receiver.city)}<br>${escapeHtml(value.addresses.receiver.country)}</p></article></div><details class="card" open><summary><strong>${value.boxes.length} box${value.boxes.length === 1 ? '' : 'es'} · ${itemCount} item${itemCount === 1 ? '' : 's'}</strong></summary>${value.boxes.map((box, index) => `<p>Box ${index + 1}: ${escapeHtml(box.length)} × ${escapeHtml(box.width)} × ${escapeHtml(box.height)} ${escapeHtml(value.units.dimension)} · ${escapeHtml(box.weight)} ${escapeHtml(value.units.mass)}</p>`).join('')}</details></section>`;
   }
 
   private renderAddress(role: 'sender' | 'receiver', address: ShipmentRateDraftAddress): string {
@@ -152,11 +167,17 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
     form.addEventListener('input', (event) => this.handleInput(event));
     form.addEventListener('change', (event) => this.handleInput(event));
     form.addEventListener('click', (event) => this.handleAction(event));
+    form.querySelector('[data-action="next-step"]')?.addEventListener('click', () => { this.#step = Math.min(4, this.#step + 1); this.render(); });
+    form.querySelector('[data-action="previous-step"]')?.addEventListener('click', () => { this.#step = Math.max(0, this.#step - 1); this.render(); });
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       const result = validateRateRequest(this.#value!, this.shipmentMode);
       this.#issues = result.issues;
       if (!result.valid) {
+        const firstPath = result.issues[0]?.path ?? '';
+        this.#step = firstPath.startsWith('addresses.sender') ? 1
+          : firstPath.startsWith('addresses.receiver') ? 2
+            : firstPath.startsWith('boxes') ? 3 : this.#step;
         this.render();
         this.root.querySelector<HTMLElement>('.alert')?.scrollIntoView?.({ block: 'nearest' });
         const firstIssue = result.issues[0];

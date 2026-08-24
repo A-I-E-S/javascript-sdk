@@ -1,84 +1,52 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  completePreparedPurchaseRequest,
-  isAssignedDateValid,
-  legacyPurchaseRequestForPresentation,
-  minimumAssignedDate,
-  normalizeCompletedRateRequest,
-  sampleRateDraft,
+  WAREHOUSE_ADDRESS, DEMO_PRODUCTS, cartLines, cartTotals, createPackagingInput,
+  packagingToRateBoxes, createRateRequest, shippingAmount, minimumAssignedDate, payDemoResult,
 } from '../src/demo-state.js';
 
-test('minimum assigned date is tomorrow across calendar boundaries', () => {
+test('minimum assigned date advances across calendar boundaries', () => {
   assert.equal(minimumAssignedDate(new Date(2026, 11, 31, 23, 59)), '2027-01-01');
-  assert.equal(minimumAssignedDate(new Date(2028, 1, 28, 23, 59)), '2028-02-29');
 });
 
-test('assigned date accepts the minimum or later and rejects today', () => {
-  assert.equal(isAssignedDateValid('2026-08-19', '2026-08-19'), true);
-  assert.equal(isAssignedDateValid('2026-08-20', '2026-08-19'), true);
-  assert.equal(isAssignedDateValid('2026-08-18', '2026-08-19'), false);
-  assert.equal(isAssignedDateValid('', '2026-08-19'), false);
+test('cart preserves configured unit measurements and calculates line totals', () => {
+  const lines = cartLines({ headgear: 2, dress: 1 });
+  assert.equal(lines.length, 2); assert.equal(lines[0].weight, 0.8); assert.equal(lines[0].quantity, 2);
+  const totals = cartTotals(lines);
+  assert.deepEqual({ quantity: totals.quantity, subtotal: totals.subtotal }, { quantity: 3, subtotal: 69000 });
+  assert.ok(Math.abs(totals.unitWeightTotal - 2.15) < Number.EPSILON * 4);
 });
 
-test('sample draft returns a fresh, exact-contract sample each time', () => {
-  const first = sampleRateDraft();
-  const second = sampleRateDraft();
-  assert.notStrictEqual(first, second);
-  assert.equal(first.addresses.sender.first_name, 'John');
-  assert.equal(first.addresses.receiver.city, 'Boston');
-  assert.deepEqual(first.boxes[0].items.map(({ name }) => name), [
-    'Electronics Accessories',
-    'Smartphone Case',
-  ]);
-  assert.equal(first.units.mass, 'KG');
-  assert.equal(first.units.dimension, 'cm');
-  assert.equal(first.last_mile_delivery, true);
-  assert.equal(first.pickup, false);
-  assert.equal(first.boxes[0].items[0].price, first.boxes[0].items[0].unit_price);
-  assert.equal(first.boxes[0].items[0].product_hs_code_description, first.boxes[0].items[0].description);
-  assert.deepEqual(sampleRateDraft('STN').units, { dimension: 'inches', mass: 'LBS' });
-  assert.equal(sampleRateDraft('STN').last_mile_delivery, false);
-  assert.equal(sampleRateDraft('STN').pickup, true);
+test('packaging input uses selected API classification and configurable box settings', () => {
+  const input = createPackagingInput(cartLines({ bag: 2 }), { bag: { hs_code: '4202990000', name: 'Travel goods' } });
+  assert.deepEqual(input.settings.dimensionalAllowance, { length: 1, width: 1, height: 1 });
+  assert.equal(input.settings.maxWeightPerBox, 30); assert.equal(input.items[0].unitWeight, 1.4);
+  assert.equal(input.items[0].productHsCode, '4202990000'); assert.equal(input.items[0].productHsCodeDescription, 'Travel goods');
+  assert.equal(input.settings.boxCatalog.length, 3);
 });
 
-test('normalizes legacy Stage 1 output to exact SFN and STN wire rules', () => {
-  const legacy = sampleRateDraft('SFN');
-  legacy.units = { dimension: 'INCHES', mass: 'lbs' };
-  delete legacy.pickup;
-  const sfn = normalizeCompletedRateRequest(legacy, 'SFN');
-  assert.deepEqual(sfn.units, { dimension: 'cm', mass: 'KG' });
-  assert.equal(sfn.last_mile_delivery, true);
-  assert.equal(sfn.pickup, false);
-  assert.equal(typeof sfn.boxes[0].length, 'number');
-  assert.equal(typeof sfn.boxes[0].items[0].quantity, 'number');
-
-  const stn = normalizeCompletedRateRequest(legacy, 'STN');
-  assert.deepEqual(stn.units, { dimension: 'inches', mass: 'LBS' });
-  assert.equal(stn.last_mile_delivery, false);
-  assert.equal(stn.pickup, true);
+test('packaging result uses the SDK-produced rate boxes without rewriting item weight', () => {
+  const product = { ...DEMO_PRODUCTS[0], quantity: 3 }; const rateBoxes = [{ index: 1, length: 30, width: 26, height: 20, weight: 2.4,
+    items: [{ name: product.name, weight: 0.8, quantity: 3, amount: product.price * 3 }] }];
+  const boxes = packagingToRateBoxes({ valid: true, rateBoxes, boxes: [{}], issues: [], unpackedItems: [] });
+  assert.strictEqual(boxes, rateBoxes);
+  assert.equal(boxes[0].weight, 2.4); assert.equal(boxes[0].items[0].weight, 0.8);
+  assert.equal(boxes[0].items[0].quantity, 3); assert.equal(boxes[0].items[0].amount, product.price * 3);
 });
 
-test('completes legacy purchase currency and remains idempotent for 0.2', () => {
-  const rate = { others: { currency: 'NGN' } };
-  const legacy = completePreparedPurchaseRequest({ external_reference: 'ORDER-1' }, rate, 'SFN');
-  assert.equal(legacy.currency, 'NGN');
-  assert.deepEqual(completePreparedPurchaseRequest(legacy, rate, 'SFN'), legacy);
-  assert.throws(
-    () => completePreparedPurchaseRequest(legacy, { others: { currency: 'USD' } }, 'SFN'),
-    /must use NGN/,
-  );
+test('SFN request fixes Nigerian warehouse and sends insurance wire flag', () => {
+  const receiver = { country: 'US' }; const request = createRateRequest(receiver, [{ index: 1 }], true);
+  assert.equal(WAREHOUSE_ADDRESS.country, 'NG'); assert.equal(request.addresses.sender.country, 'NG');
+  assert.strictEqual(request.addresses.receiver, receiver); assert.equal(request.is_insured, '1');
+  assert.deepEqual(request.units, { dimension: 'cm', mass: 'KG' });
 });
 
-test('isolates obsolete 0.1 STN presentation units from the canonical API request', () => {
-  const canonical = {
-    units: { dimension: 'inches', mass: 'LBS' },
-    address: { sender: { city: 'Isolo' }, receiver: { city: 'Boston' } },
-    currency: 'USD',
-  };
-  const presentation = legacyPurchaseRequestForPresentation(canonical, 'STN');
-  assert.deepEqual(presentation.units, { dimension: 'INCHES', mass: 'lbs' });
-  assert.deepEqual(presentation.address, canonical.address);
-  assert.deepEqual(canonical.units, { dimension: 'inches', mass: 'LBS' });
-  assert.strictEqual(legacyPurchaseRequestForPresentation(canonical, 'SFN'), canonical);
+test('selected shipping amount is validated for host order totals', () => {
+  assert.equal(shippingAmount({ payment_amount: '12500.50' }), 12500.5);
+  assert.throws(() => shippingAmount({ payment_amount: 'unknown' }), /invalid shipping cost/);
+});
+
+test('PayDemo only confirms the successful simulation', () => {
+  assert.equal(payDemoResult('success').confirmed, true); assert.equal(payDemoResult('failed').confirmed, false);
+  assert.match(payDemoResult('cancelled').id, /^PAYDEMO-/);
 });

@@ -101,7 +101,8 @@ $('#login-form').addEventListener('submit', async (event) => {
   state.client = null;
   status.className = 'message'; status.textContent = 'Checking credential with Africanies sandbox…'; setBusy(button, true, 'Checking…');
   try {
-    const client = Shipping.createAfricaniesClient({ environment: 'test', auth: { encodedKey } });
+    // This compulsorily-SFN demo keeps a legacy hint so the addressless credential ping carries its mode.
+    const client = Shipping.createAfricaniesClient({ environment: 'test', shipmentMode: 'SFN', auth: { encodedKey } });
     const response = await client.carriers.list();
     if (!response?.success) throw new Error(response?.message || 'Credential check was not accepted.');
     state.client = client; $('#encoded-key').value = ''; $('#login-view').hidden = true; $('#store-view').hidden = false; $('#authenticated-actions').hidden = false; renderCatalog(); show('catalog-section');

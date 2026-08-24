@@ -22,6 +22,10 @@ describe('Africanies client resources', () => {
     request.units = { mass: 'LBS', dimension: 'inches' }; request.last_mile_delivery = false; request.pickup = true;
     await client.shipments.getRates(request);
     expect(recorded.requests[0]?.shipmentMode).toBe('STN');
+    const purchase = purchaseRequest(); purchase.address.sender.country='US'; purchase.address.receiver.country='NG';
+    purchase.units={mass:'LBS',dimension:'inches'}; purchase.currency='USD';
+    await client.shipments.purchase(purchase);
+    expect(recorded.requests[1]?.shipmentMode).toBe('STN');
   });
 
   it('does not require shipmentMode and validates a blank sender country', async () => {

@@ -37,7 +37,7 @@ test('automatic delivery uses dependent country and state selects', async () => 
   const [page,main]=await Promise.all([source('index.html'),source('src/main.js')]);
   assert.match(page,/id="receiver-country"[^>]*name="country"/); assert.match(page,/id="receiver-state"[^>]*name="state"/);
   assert.match(main,/receiver-country.*change/); assert.match(main,/populateReceiverStates\(\)/);
-  assert.doesNotMatch(main,/shipmentMode:\s*'SFN'/);
+  assert.match(main,/shipmentMode:\s*'SFN'.*carriers\.list/s);
 });
 
 test('manual entry explicitly registers SDK browser elements for production bundles', async () => {

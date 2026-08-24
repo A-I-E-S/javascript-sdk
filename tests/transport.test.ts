@@ -35,6 +35,10 @@ describe('fetch transport', () => {
     expect(headers.get('X-Shipment-Mode')).toBe('SFN');
     expect(headers.get('Content-Type')).toBe('application/json');
     expect(headers.has('X-Account-Number')).toBe(false);
+
+    await transport.request({ method: 'POST', path: '/shipment/purchase', shipmentMode: 'STN', body: {} });
+    const overriddenHeaders = new Headers(fetchMock.mock.calls[1]![1]?.headers);
+    expect(overriddenHeaders.get('X-Shipment-Mode')).toBe('STN');
   });
 
   it('serializes optional purchase flags unchanged in the JSON body', async () => {

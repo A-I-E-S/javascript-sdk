@@ -29,3 +29,10 @@ test('product classification supports debounced typed search and cancellation', 
   assert.match(main, /controller\?\.abort\(\)/);
   assert.match(main, /Type at least 3 characters/);
 });
+
+test('manual purchase distinguishes definitive validation failures from uncertain delivery', async () => {
+  const manual = await source('src/manual.js');
+  assert.match(manual, /isDefinitivePurchaseFailure/);
+  assert.match(manual, /\[400,401,403,404,422,424\]/);
+  assert.match(manual, /purchaseState==='uncertain'\?` Reconcile/);
+});

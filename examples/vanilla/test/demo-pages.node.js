@@ -24,11 +24,29 @@ test('automatic and manual packaging demos are distinct and mutually discoverabl
 });
 
 test('product classification supports debounced typed search and cancellation', async () => {
-  const main = await source('src/main.js');
+  const [page, main] = await Promise.all([source('index.html'), source('src/main.js')]);
   assert.match(main, /scheduleProductSearch\(input\.dataset\.productSearch\)/);
   assert.match(main, /delete state\.productSearches\[productId\]; void startProductSearch\(productId\)/);
   assert.match(main, /controller\?\.abort\(\)/);
   assert.match(main, /Type at least 3 characters/);
+  assert.match(main, /function productKeydown/);
+  assert.match(main, /aria-activedescendant/);
+  assert.match(main, /data-clear-product/);
+  assert.match(page + main, /role=\"listbox\"/);
+});
+
+test('manual lab restores useful historical defaults without a hardcoded HS code', async () => {
+  const manual = await source('src/manual.js');
+  assert.match(manual, /length:'10',width:'10',height:'10',weight:'5'/);
+  assert.match(manual, /name:'Electronics Accessories'.*weight:'1\.5'.*unit_price:1500/);
+  assert.match(manual, /name:'Smartphone Case'.*weight:'0\.3'.*unit_price:1500/);
+  assert.match(manual, /product_hs_code:''/);
+});
+
+test('payment results use structured, accessible payment records', async () => {
+  const [main, manual, styles] = await Promise.all([source('src/main.js'), source('src/manual.js'), source('src/styles.css')]);
+  assert.match(main, /payment-status-badge/); assert.match(main, /Merchandise/); assert.match(main, /Carrier/);
+  assert.match(manual, /payment-record-head/); assert.match(styles, /payment-record-total/);
 });
 
 test('manual purchase distinguishes definitive validation failures from uncertain delivery', async () => {

@@ -75,6 +75,8 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
   #productSearches = new Map<string, { version: number; controller: AbortController }>();
   #productQueries = new Map<string, string>();
   #productDebounces = new Map<string, number>();
+  #productOpen = new Set<string>();
+  #productActive = new Map<string, number>();
 
   get client(): AfricaniesClient | undefined { return this.#client; }
   set client(value: AfricaniesClient | undefined) {
@@ -116,6 +118,12 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
         .panel-heading { margin-bottom:20px; }
         .summary-pair { display:grid; gap:16px; grid-template-columns:repeat(2,minmax(0,1fr)); }
         .summary-value { font-size:14px; margin:5px 0 0; }
+        .combobox { position:relative; }
+        .combobox-results { background:#fff; border:1px solid var(--africanies-border); border-radius:10px; box-shadow:0 12px 28px #17243a20; list-style:none; margin:4px 0 0; max-height:220px; overflow:auto; padding:5px; position:absolute; width:100%; z-index:4; }
+        .combobox-results li { border-radius:7px; cursor:pointer; display:grid; gap:2px; padding:9px 10px; }
+        .combobox-results li[aria-selected="true"] { background:#e7f8ee; }
+        .combobox-results small { color:var(--africanies-muted); }
+        .selected-product { align-items:center; background:#edf8f1; border-radius:8px; display:flex; gap:8px; justify-content:space-between; margin-top:8px; padding:9px; }
         @media(max-width:640px){.summary-pair{grid-template-columns:1fr}}
       </style><form class="shell" novalidate>
         <div class="topline"><div><h2>Create shipment</h2><p class="muted">Complete each section, review the shipment, then request rates.</p></div>${testModeMarkup(this.environment)}</div>
@@ -156,8 +164,10 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
   }
 
   private renderBox(box: RateBoxDraft, boxIndex: number): string {
+    const contentsWeight = box.items.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.weight || 0), 0);
     return `<article class="card box"><div class="section-title"><h3>Box ${boxIndex + 1}</h3><button class="danger" type="button" data-action="remove-box" data-box="${boxIndex}" ${this.#value!.boxes.length === 1 ? 'disabled' : ''}>Remove</button></div>
-      <div class="grid">${(['length', 'width', 'height', 'weight'] as const).map((key) => { const path = `boxes.${boxIndex}.${key}`; return `<label>${key[0]!.toUpperCase()}${key.slice(1)}<input inputmode="decimal" data-path="${path}" data-box="${boxIndex}" data-box-field="${key}" value="${escapeHtml(box[key])}" ${this.issueAttributes(path)}>${this.issueMarkup(path)}</label>`; }).join('')}</div>
+      <p class="muted">Stable API index ${escapeHtml(box.index)}. Enter gross weight including contents and any box/tare weight; current item quantity × unit-weight total is ${escapeHtml(contentsWeight.toFixed(2))} ${escapeHtml(this.#value!.units.mass)}.</p>
+      <div class="grid">${(['length', 'width', 'height', 'weight'] as const).map((key) => { const path = `boxes.${boxIndex}.${key}`; const label=key==='weight'?'Gross weight (contents + tare)':key[0]!.toUpperCase()+key.slice(1); return `<label>${label}<input inputmode="decimal" data-path="${path}" data-box="${boxIndex}" data-box-field="${key}" value="${escapeHtml(box[key])}" ${this.issueAttributes(path)}>${this.issueMarkup(path)}</label>`; }).join('')}</div>
       <div class="section-title" style="margin-top:16px"><h3>Items</h3><button class="secondary" type="button" data-action="add-item" data-box="${boxIndex}">Add item</button></div>
       <div class="stack">${box.items.map((item, itemIndex) => this.renderItem(item, boxIndex, itemIndex)).join('')}</div></article>`;
   }
@@ -170,7 +180,8 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
     ];
     const resultKey = `${boxIndex}:${itemIndex}`;
     const results = this.#productResults.get(resultKey) ?? [];
-    return `<div class="item"><div class="section-title"><strong>Item ${itemIndex + 1}</strong><button class="danger" type="button" data-action="remove-item" data-box="${boxIndex}" data-item="${itemIndex}" ${this.#value!.boxes[boxIndex]!.items.length === 1 ? 'disabled' : ''}>Remove</button></div><div class="grid">${fields.map(([key, label, type]) => { const path = `boxes.${boxIndex}.items.${itemIndex}.${String(key)}`; return `<label>${label}<input type="${type}" data-path="${path}" data-box="${boxIndex}" data-item="${itemIndex}" data-item-field="${String(key)}" value="${escapeHtml(item[key])}" ${this.issueAttributes(path)}>${this.issueMarkup(path)}</label>`; }).join('')}<div><label>Find closest product<input data-product-query data-box="${boxIndex}" data-item="${itemIndex}" autocomplete="off" value="${escapeHtml(this.#productQueries.get(resultKey) ?? item.product_hs_code_description ?? item.name)}"></label><button class="secondary" type="button" data-action="search-product" data-box="${boxIndex}" data-item="${itemIndex}" ${!this.#client ? 'disabled title="Set client to search products"' : ''}>Search now</button><select aria-label="Select product classification" data-product-result data-box="${boxIndex}" data-item="${itemIndex}" ${results.length ? '' : 'hidden'}><option value="">Select a product…</option>${results.map((product) => `<option value="${escapeHtml(product.hs_code)}" data-name="${escapeHtml(product.name)}" ${product.hs_code === item.product_hs_code ? 'selected' : ''}>${escapeHtml(product.name)}</option>`).join('')}</select><p class="muted" role="status" aria-live="polite">${escapeHtml(this.#productStatus.get(resultKey) ?? (item.product_hs_code ? `${item.product_hs_code_description ?? 'Selected product'} · HS ${item.product_hs_code}` : 'Type at least 3 characters; search starts automatically.'))}</p></div></div></div>`;
+    const listId = `product-list-${boxIndex}-${itemIndex}`; const active = this.#productActive.get(resultKey) ?? -1;
+    return `<div class="item"><div class="section-title"><strong>Item ${itemIndex + 1}</strong><button class="danger" type="button" data-action="remove-item" data-box="${boxIndex}" data-item="${itemIndex}" ${this.#value!.boxes[boxIndex]!.items.length === 1 ? 'disabled' : ''}>Remove</button></div><div class="grid">${fields.map(([key, label, type]) => { const path = `boxes.${boxIndex}.items.${itemIndex}.${String(key)}`; return `<label>${label}<input type="${type}" data-path="${path}" data-box="${boxIndex}" data-item="${itemIndex}" data-item-field="${String(key)}" value="${escapeHtml(item[key])}" ${this.issueAttributes(path)}>${this.issueMarkup(path)}</label>`; }).join('')}<div class="combobox"><label>Find closest product<input role="combobox" aria-autocomplete="list" aria-expanded="${this.#productOpen.has(resultKey)}" aria-controls="${listId}" ${active >= 0 ? `aria-activedescendant="${listId}-option-${active}"` : ''} data-product-query data-box="${boxIndex}" data-item="${itemIndex}" autocomplete="off" value="${escapeHtml(this.#productQueries.get(resultKey) ?? item.product_hs_code_description ?? item.name)}"></label><ul id="${listId}" class="combobox-results" role="listbox" ${this.#productOpen.has(resultKey) ? '' : 'hidden'}>${results.map((product, index) => `<li id="${listId}-option-${index}" role="option" aria-selected="${index === active}" data-product-option data-box="${boxIndex}" data-item="${itemIndex}" data-index="${index}" data-hs="${escapeHtml(product.hs_code)}" data-name="${escapeHtml(product.name)}"><strong>${escapeHtml(product.name)}</strong><small>HS ${escapeHtml(product.hs_code)}</small></li>`).join('')}</ul>${item.product_hs_code ? `<div class="selected-product"><span>${escapeHtml(item.product_hs_code_description ?? 'Selected product')} · HS ${escapeHtml(item.product_hs_code)}</span><button class="secondary" type="button" data-action="clear-product" data-box="${boxIndex}" data-item="${itemIndex}">Clear</button></div>` : ''}<p class="muted" role="status" aria-live="polite">${escapeHtml(this.#productStatus.get(resultKey) ?? 'Type at least 3 characters; search starts automatically.')}</p></div></div></div>`;
   }
 
   private bind(): void {
@@ -178,6 +189,7 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
     form.addEventListener('input', (event) => this.handleInput(event));
     form.addEventListener('change', (event) => this.handleInput(event));
     form.addEventListener('click', (event) => this.handleAction(event));
+    form.addEventListener('keydown', (event) => this.handleProductKeydown(event as KeyboardEvent));
     form.querySelector('[data-action="next-step"]')?.addEventListener('click', () => { this.#step = Math.min(4, this.#step + 1); this.render(); });
     form.querySelector('[data-action="previous-step"]')?.addEventListener('click', () => { this.#step = Math.max(0, this.#step - 1); this.render(); });
     form.querySelectorAll<HTMLButtonElement>('[data-action="search-product"]').forEach((button) => button.addEventListener('click', () => void this.searchProducts(Number(button.dataset.box), Number(button.dataset.item))));
@@ -211,19 +223,11 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
       this.#productQueries.set(key, input.value); this.#productSearches.get(key)?.controller.abort(); this.#productSearches.delete(key);
       const pending = this.#productDebounces.get(key); if (pending !== undefined) clearTimeout(pending);
       const item = this.#value!.boxes[boxIndex]!.items[itemIndex]!; item.product_hs_code = ''; delete item.product_hs_code_description; this.#productResults.delete(key);
+      this.#productOpen.delete(key); this.#productActive.delete(key); input.setAttribute('aria-expanded','false'); input.removeAttribute('aria-activedescendant'); const combobox=input.closest('.combobox'); combobox?.querySelector('.selected-product')?.remove(); combobox?.querySelector<HTMLElement>('[role="listbox"]')?.setAttribute('hidden','');
+      this.emit('africanies-change', clone(this.#value!));
       if (input.value.trim().length < 3) { this.#productStatus.set(key, 'Type at least 3 characters to search.'); this.#productDebounces.delete(key); return; }
       this.#productStatus.set(key, 'Waiting to search…');
       this.#productDebounces.set(key, window.setTimeout(() => { this.#productDebounces.delete(key); void this.searchProducts(boxIndex, itemIndex); }, 350));
-      return;
-    }
-    if (input.matches('[data-product-result]')) {
-      const boxIndex = Number(input.dataset.box); const itemIndex = Number(input.dataset.item);
-      const option = (input as HTMLSelectElement).selectedOptions[0]; const item = this.#value!.boxes[boxIndex]!.items[itemIndex]!;
-      if (option?.value) {
-        item.product_hs_code = option.value; item.product_hs_code_description = option.dataset.name ?? option.textContent ?? '';
-        this.#productStatus.set(`${boxIndex}:${itemIndex}`, `${item.product_hs_code_description} · HS ${item.product_hs_code}`);
-        this.emit('africanies-change', clone(this.#value!)); this.render();
-      }
       return;
     }
     const field = input.dataset.field;
@@ -269,6 +273,7 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
       if (this.#productSearches.get(key) !== search || client !== this.#client || !this.isConnected) return;
       const results = Array.isArray(response.data) ? response.data : [];
       this.#productResults.set(key, results); this.#productStatus.set(key, results.length ? `${results.length} products found. Select the closest match.` : 'No matching products found.');
+      if (results.length) { this.#productOpen.add(key); this.#productActive.set(key, 0); }
     } catch (cause) {
       if (this.#productSearches.get(key) !== search || client !== this.#client || !this.isConnected || search.controller.signal.aborted) return;
       this.#productStatus.set(key, cause instanceof Error ? cause.message : 'Product search failed.');
@@ -284,7 +289,15 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
     this.#productDebounces.clear();
   }
 
+  private clearProductInteractionState(): void {
+    this.cancelProductSearches();
+    this.#productQueries.clear(); this.#productResults.clear(); this.#productStatus.clear();
+    this.#productOpen.clear(); this.#productActive.clear();
+  }
+
   private handleAction(event: Event): void {
+    const option = (event.target as Element).closest<HTMLElement>('[data-product-option]');
+    if (option) { this.selectProduct(Number(option.dataset.box), Number(option.dataset.item), Number(option.dataset.index)); return; }
     const button = (event.target as Element).closest<HTMLButtonElement>('button[data-action]');
     if (!button) return;
     const boxIndex = Number(button.dataset.box);
@@ -295,13 +308,18 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
       this.#value!.boxes.push(emptyBox(nextIndex));
       changed = true;
     }
-    if (button.dataset.action === 'remove-box' && this.#value!.boxes.length > 1) { this.#value!.boxes.splice(boxIndex, 1); changed = true; }
+    if (button.dataset.action === 'remove-box' && this.#value!.boxes.length > 1) { this.#value!.boxes.splice(boxIndex, 1); this.clearProductInteractionState(); changed = true; }
     if (button.dataset.action === 'add-item') { this.#value!.boxes[boxIndex]!.items.push(emptyItem()); changed = true; }
-    if (button.dataset.action === 'remove-item' && this.#value!.boxes[boxIndex]!.items.length > 1) { this.#value!.boxes[boxIndex]!.items.splice(Number(button.dataset.item), 1); changed = true; }
+    if (button.dataset.action === 'remove-item' && this.#value!.boxes[boxIndex]!.items.length > 1) { this.#value!.boxes[boxIndex]!.items.splice(Number(button.dataset.item), 1); this.clearProductInteractionState(); changed = true; }
+    if (button.dataset.action === 'clear-product') { const itemIndex=Number(button.dataset.item); const key=`${boxIndex}:${itemIndex}`; this.#productSearches.get(key)?.controller.abort(); this.#productSearches.delete(key); const pending=this.#productDebounces.get(key); if(pending!==undefined)clearTimeout(pending); this.#productDebounces.delete(key); const item=this.#value!.boxes[boxIndex]!.items[itemIndex]!; item.product_hs_code=''; delete item.product_hs_code_description; this.#productQueries.set(key,''); this.#productResults.delete(key); this.#productOpen.delete(key); this.#productActive.delete(key); changed=true; }
     if (!changed) return;
     this.render();
     this.emit('africanies-change', clone(this.#value!));
   }
+
+  private selectProduct(boxIndex:number,itemIndex:number,index:number):void { const key=`${boxIndex}:${itemIndex}`; const product=this.#productResults.get(key)?.[index]; if(!product)return; const item=this.#value!.boxes[boxIndex]!.items[itemIndex]!; item.product_hs_code=product.hs_code; item.product_hs_code_description=product.name; this.#productQueries.set(key,product.name); this.#productOpen.delete(key); this.#productStatus.set(key,`${product.name} · HS ${product.hs_code}`); this.emit('africanies-change',clone(this.#value!)); this.render(); }
+
+  private handleProductKeydown(event:KeyboardEvent):void { const input=(event.target as Element).closest<HTMLInputElement>('[data-product-query]'); if(!input)return; const box=Number(input.dataset.box), item=Number(input.dataset.item), key=`${box}:${item}`; const results=this.#productResults.get(key)??[]; if(event.key==='Escape'){this.#productOpen.delete(key);input.setAttribute('aria-expanded','false');input.removeAttribute('aria-activedescendant');this.root.querySelector<HTMLElement>(`#product-list-${box}-${item}`)?.setAttribute('hidden','');return;} if(!results.length)return; let active=this.#productActive.get(key)??0; if(event.key==='ArrowDown'){event.preventDefault();active=(active+1)%results.length;} else if(event.key==='ArrowUp'){event.preventDefault();active=(active-1+results.length)%results.length;} else if(event.key==='Enter'&&this.#productOpen.has(key)){event.preventDefault();this.selectProduct(box,item,active);return;} else return; this.#productActive.set(key,active);this.#productOpen.add(key);this.render();this.root.querySelector<HTMLInputElement>(`[data-product-query][data-box="${box}"][data-item="${item}"]`)?.focus(); }
 
   private issueFor(path: string): ValidationIssue | undefined {
     return this.#issues.find((issue) => issue.path === path);

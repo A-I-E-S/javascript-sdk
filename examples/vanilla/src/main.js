@@ -39,20 +39,14 @@ function renderCatalog() {
     <div class="product-art ${product.id}" aria-hidden="true">${product.name.slice(0, 1)}</div>
     <div class="product-copy"><small>PRODUCT CLASSIFICATION REQUIRED</small><h3>${product.name}</h3><p>${product.description}</p>
     <dl><div><dt>Unit weight</dt><dd>${product.weight} kg</dd></div><div><dt>Size</dt><dd>${product.dimensions.length} × ${product.dimensions.width} × ${product.dimensions.height} cm</dd></div></dl>
-    <div class="classification"><label>Find product classification<input data-product-search="${product.id}" value="${product.name}" aria-describedby="product-status-${product.id}" autocomplete="off"></label><button type="button" class="secondary search-product" data-product="${product.id}">Search now</button><select data-product-results="${product.id}" hidden aria-label="Select product classification"></select><p id="product-status-${product.id}" data-product-status="${product.id}" role="status" aria-live="polite">Type at least 3 characters. Search starts automatically.</p></div>
+    <div class="classification"><label>Find product classification<input role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="product-list-${product.id}" data-product-search="${product.id}" value="${product.name}" aria-describedby="product-status-${product.id}" autocomplete="off"></label><ul id="product-list-${product.id}" class="product-options" role="listbox" data-product-results="${product.id}" hidden></ul><div data-product-selection="${product.id}"></div><p id="product-status-${product.id}" data-product-status="${product.id}" role="status" aria-live="polite">Type at least 3 characters. Search starts automatically.</p></div>
     <div class="product-action"><strong>${money(product.price)}</strong><label>Qty <input class="quantity" data-product="${product.id}" type="number" min="0" max="20" step="1" value="${state.cart[product.id] ?? 0}"></label></div></div></article>`).join('');
   document.querySelectorAll('.quantity').forEach((input) => input.addEventListener('input', () => {
     state.cart[input.dataset.product] = Math.max(0, Number(input.value)); state.lines = cartLines(state.cart);
     updateCheckoutState();
   }));
-  document.querySelectorAll('.search-product').forEach((button) => button.addEventListener('click', () => startProductSearch(button.dataset.product, button)));
-  document.querySelectorAll('[data-product-search]').forEach((input) => input.addEventListener('input', () => scheduleProductSearch(input.dataset.productSearch)));
-  document.querySelectorAll('[data-product-results]').forEach((select) => select.addEventListener('change', () => {
-    const option = select.selectedOptions[0]; if (!option?.value) return;
-    state.classifications[select.dataset.productResults] = { hs_code: option.value, name: option.textContent };
-    $(`[data-product-status="${select.dataset.productResults}"]`).textContent = `Selected ${option.textContent} · HS ${option.value}`;
-    updateCheckoutState();
-  }));
+  document.querySelectorAll('[data-product-search]').forEach((input) => { input.addEventListener('input', () => scheduleProductSearch(input.dataset.productSearch)); input.addEventListener('keydown', productKeydown); });
+  document.querySelectorAll('[data-product-results]').forEach((list) => list.addEventListener('click', (event) => { const option=event.target.closest('[data-product-option]'); if(option)selectClassification(list.dataset.productResults,Number(option.dataset.index)); }));
 }
 
 function updateCheckoutState() {
@@ -69,7 +63,7 @@ function cancelProductSearch(productId) {
 function scheduleProductSearch(productId) {
   cancelProductSearch(productId); delete state.classifications[productId]; updateCheckoutState();
   const query = $(`[data-product-search="${productId}"]`).value.trim(); const status = $(`[data-product-status="${productId}"]`); const select = $(`[data-product-results="${productId}"]`);
-  select.hidden = true; select.replaceChildren();
+  select.hidden = true; select.replaceChildren(); $(`[data-product-selection="${productId}"]`).replaceChildren(); const input=$(`[data-product-search="${productId}"]`); input.setAttribute('aria-expanded','false'); input.removeAttribute('aria-activedescendant');
   if (query.length < 3) { status.textContent = 'Type at least 3 characters to search.'; return; }
   status.textContent = 'Waiting to search…';
   const timer = setTimeout(() => {
@@ -77,22 +71,26 @@ function scheduleProductSearch(productId) {
   }, 350); state.productSearches[productId] = { timer };
 }
 
-async function startProductSearch(productId, button = $(`button[data-product="${productId}"].search-product`)) {
+async function startProductSearch(productId) {
   const query = $(`[data-product-search="${productId}"]`).value.trim(); const status = $(`[data-product-status="${productId}"]`);
   cancelProductSearch(productId); const controller = new AbortController(); const search = { controller }; state.productSearches[productId] = search;
   delete state.classifications[productId]; updateCheckoutState();
   if (query.length < 3) { delete state.productSearches[productId]; status.textContent = 'Type at least 3 characters to search.'; return; }
-  setBusy(button, true, 'Searching…'); status.textContent = 'Searching Africanies products…';
+  status.textContent = 'Searching Africanies products…';
   try {
     const client = state.client; const response = await client.products.search(query, controller.signal);
     if (state.productSearches[productId] !== search || state.client !== client) return;
     const results = Array.isArray(response.data) ? response.data : [];
-    if (!results.length) throw new Error('No matching products were returned. Try a broader description.');
-    const select = $(`[data-product-results="${productId}"]`); select.innerHTML = `<option value="">Select a classification…</option>${results.map((item) => `<option value="${html(item.hs_code)}">${html(item.name)}</option>`).join('')}`;
-    select.hidden = false; status.textContent = `${results.length} matching classifications found.`;
+    state.productSearches[productId].results=results; state.productSearches[productId].active=0;
+    if (!results.length) { status.textContent='No matching products found. Try a broader description.'; return; }
+    const list = $(`[data-product-results="${productId}"]`); list.innerHTML = results.map((item,index) => `<li id="product-${productId}-option-${index}" role="option" aria-selected="${index===0}" data-product-option data-index="${index}"><strong>${html(item.name)}</strong><small>HS ${html(item.hs_code)}</small></li>`).join('');
+    list.hidden = false; const input=$(`[data-product-search="${productId}"]`); input.setAttribute('aria-expanded','true'); input.setAttribute('aria-activedescendant',`product-${productId}-option-0`); status.textContent = `${results.length} matching classifications found.`;
   } catch (cause) { if (state.productSearches[productId] === search && !controller.signal.aborted) status.textContent = cause instanceof Error ? cause.message : 'Product search failed.'; }
-  finally { if (state.productSearches[productId] === search) { delete state.productSearches[productId]; setBusy(button, false); } }
+  finally { if (state.productSearches[productId] === search && !search.results) delete state.productSearches[productId]; }
 }
+
+function selectClassification(productId,index){ const search=state.productSearches[productId]; const product=search?.results?.[index]; if(!product)return; state.classifications[productId]=product; const input=$(`[data-product-search="${productId}"]`); input.value=product.name; input.setAttribute('aria-expanded','false'); input.removeAttribute('aria-activedescendant'); $(`[data-product-results="${productId}"]`).hidden=true; $(`[data-product-selection="${productId}"]`).innerHTML=`<div class="classification-selection"><span>${html(product.name)} · HS ${html(product.hs_code)}</span><button type="button" class="secondary" data-clear-product="${productId}">Clear</button></div>`; $(`[data-clear-product="${productId}"]`).addEventListener('click',()=>{cancelProductSearch(productId);delete state.classifications[productId];input.value='';input.setAttribute('aria-expanded','false');input.removeAttribute('aria-activedescendant');$(`[data-product-results="${productId}"]`).hidden=true;$(`[data-product-selection="${productId}"]`).replaceChildren();$(`[data-product-status="${productId}"]`).textContent='Type at least 3 characters to search.';updateCheckoutState();input.focus();}); $(`[data-product-status="${productId}"]`).textContent=`Selected ${product.name} · HS ${product.hs_code}`; updateCheckoutState(); }
+function productKeydown(event){const input=event.currentTarget, id=input.dataset.productSearch, search=state.productSearches[id], results=search?.results??[]; if(event.key==='Escape'){input.setAttribute('aria-expanded','false');input.removeAttribute('aria-activedescendant');$(`[data-product-results="${id}"]`).hidden=true;return;} if(!results.length)return; if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();search.active=(search.active+(event.key==='ArrowDown'?1:-1)+results.length)%results.length;const list=$(`[data-product-results="${id}"]`);list.hidden=false;input.setAttribute('aria-expanded','true');list.querySelectorAll('[role="option"]').forEach((option,index)=>option.setAttribute('aria-selected',String(index===search.active)));input.setAttribute('aria-activedescendant',`product-${id}-option-${search.active}`);}else if(event.key==='Enter'&&input.getAttribute('aria-expanded')==='true'){event.preventDefault();selectClassification(id,search.active??0);}}
 
 $('#login-form').addEventListener('submit', async (event) => {
   event.preventDefault(); const button = event.submitter; const status = $('#login-status'); const encodedKey = $('#encoded-key').value.trim();
@@ -134,7 +132,7 @@ $('#address-form').addEventListener('submit', async (event) => {
 
 function renderPackaging() {
   const boxes = state.packaging.boxes;
-  $('#packaging').innerHTML = `<div class="allowance-note">Protective allowance is applied to every item dimension. Maximum box weight: 30 kg.</div>${boxes.map((box, index) => `<article class="box-card"><div><small>PACKAGE ${index + 1}</small><h3>${html(box.catalogBoxName || `Box ${index + 1}`)}</h3><p>${html(box.dimensions.length)} × ${html(box.dimensions.width)} × ${html(box.dimensions.height)} cm · ${Number(box.totalWeight).toFixed(2)} kg</p></div><ul>${box.items.map((item) => `<li>${html(item.itemName)} × ${html(item.quantity)} <span>${Number(item.totalWeight).toFixed(2)} kg</span></li>`).join('')}</ul></article>`).join('')}`;
+  $('#packaging').innerHTML = `<div class="allowance-note">A +1 cm protective allowance is applied to every item axis before fitting. The SDK chooses the smallest configured box that safely fits the adjusted items, respecting the 30 kg maximum.</div>${boxes.map((box, index) => `<article class="box-card"><div><small>SELECTED PACKAGE ${index + 1}</small><h3>${html(box.catalogBoxName || `Box ${index + 1}`)}</h3><p>${html(box.dimensions.length)} × ${html(box.dimensions.width)} × ${html(box.dimensions.height)} cm · ${Number(box.totalWeight).toFixed(2)} kg</p><small>Smallest safe catalog fit after per-axis allowance${box.items.length > 1 ? ' and combined packing' : ''}.</small></div><ul>${box.items.map((item) => `<li>${html(item.itemName)} × ${html(item.quantity)} <span>${Number(item.totalWeight).toFixed(2)} kg</span></li>`).join('')}</ul></article>`).join('')}`;
 }
 
 function renderRates() {
@@ -206,7 +204,8 @@ function documentCard(label, value, isUrl, required = false, notRequested = fals
 function renderResult(result) {
   state.documentUrls.forEach((url) => URL.revokeObjectURL(url)); state.documentUrls = [];
   const tracking = safeUrl(result.tracking_url);
-  $('#shipment-result').innerHTML = `<div class="tracking-card"><div><small>REFERENCE</small><strong>${html(result.reference)}</strong></div><div><small>TRACKING NUMBER</small><strong>${html(result.tracking_number)}</strong></div>${tracking ? `<a class="primary button-link" href="${html(tracking)}" target="_blank" rel="noopener noreferrer">Track shipment</a>` : ''}</div><div class="panel payment-record"><small>PAYDEMO FULL ORDER + DELIVERY PAYMENT</small><strong>${html(state.payment.id)}</strong><span>${html(money(state.payment.amount, state.payment.currency))} · Confirmed</span></div><h3>Shipment documents</h3><div class="documents">${documentCard('Waybill', result.documents.waybill_doc, result.waybill_is_url)}${documentCard('Commercial invoice', result.documents.invoice_doc, result.invoice_is_url, true)}${documentCard('Insurance certificate', result.documents.insurance_doc, result.insurance_is_url, state.rateRequest?.is_insured === '1', state.rateRequest?.is_insured !== '1')}</div>`;
+  const totals=cartTotals(state.lines); const delivery=state.selection.shippingCost; const insurance=state.rateRequest?.is_insured==='1'?Number(state.selectedRate.charges.insurance_cost??0):0;
+  $('#shipment-result').innerHTML = `<div class="tracking-card"><div><small>REFERENCE</small><strong>${html(result.reference)}</strong></div><div><small>TRACKING NUMBER</small><strong>${html(result.tracking_number)}</strong></div>${tracking ? `<a class="primary button-link" href="${html(tracking)}" target="_blank" rel="noopener noreferrer">Track shipment</a>` : ''}</div><div class="panel payment-record" role="status"><div class="payment-record-head"><div><small>PAYDEMO FULL ORDER + DELIVERY</small><h3>Payment recorded</h3></div><span class="payment-status-badge">Paid</span></div><strong class="payment-record-total">${html(money(state.payment.amount,state.payment.currency))}</strong><dl><div><dt>Reference</dt><dd>${html(state.payment.id)}</dd></div><div><dt>Merchandise</dt><dd>${html(money(totals.subtotal,state.payment.currency))}</dd></div><div><dt>Delivery</dt><dd>${html(money(delivery,state.payment.currency))}</dd></div><div><dt>Insurance</dt><dd>${state.rateRequest?.is_insured==='1'?html(money(insurance,state.payment.currency)):'Not requested'}</dd></div><div><dt>Carrier</dt><dd>${html(state.selectedRate.name)}</dd></div><div><dt>Confirmed</dt><dd>${html(state.payment.confirmedAt??'Confirmed by PayDemo')}</dd></div></dl></div><h3>Shipment documents</h3><div class="documents">${documentCard('Waybill', result.documents.waybill_doc, result.waybill_is_url)}${documentCard('Commercial invoice', result.documents.invoice_doc, result.invoice_is_url, true)}${documentCard('Insurance certificate', result.documents.insurance_doc, result.insurance_is_url, state.rateRequest?.is_insured === '1', state.rateRequest?.is_insured !== '1')}</div>`;
 }
 
 renderCatalog();

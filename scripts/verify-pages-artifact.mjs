@@ -7,6 +7,8 @@ const forbidden = [
   'YOUR_BASE64_ENCODED_TEST_KEY',
   'dGVzdDpjcmVkZW50aWFs',
   'VITE_GOOGLE_MAPS_API_KEY',
+  'cdn.tailwindcss.com',
+  'fonts.googleapis.com',
 ];
 const forbiddenPatterns = [/AIza[0-9A-Za-z_-]{35}/g];
 const configuredBase = process.env.PAGES_BASE_PATH?.trim() ?? '';
@@ -29,6 +31,11 @@ const assetReferences = entryDocuments.flatMap(({ content }) => [...content.matc
 if (assetReferences.length < 2 || assetReferences.some((value) => !value.startsWith(`${expectedBase}assets/`))) {
   throw new Error(`Pages artifact must reference emitted CSS and JavaScript under ${expectedBase}assets/*; received ${assetReferences.join(', ') || 'none'}.`);
 }
+
+const stylesheetReferences = [...new Set(assetReferences.filter((value) => value.endsWith('.css')))];
+if (stylesheetReferences.length !== 1) throw new Error(`Both demos must share one compiled stylesheet; received ${stylesheetReferences.join(', ') || 'none'}.`);
+const compiledCss = await readFile(new URL(relative(expectedBase, stylesheetReferences[0]), root), 'utf8');
+if (!compiledCss.includes('tailwindcss v4.3.3')) throw new Error('Pages stylesheet was not compiled by the pinned Tailwind CSS toolchain.');
 
 if (!entryDocuments[0].content.includes('./manual.html') || !entryDocuments[1].content.includes('./')) {
   throw new Error('Automatic and manual demos must link to each other.');

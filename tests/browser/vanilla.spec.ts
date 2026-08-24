@@ -290,6 +290,20 @@ test('oversized Base64 document is rejected before browser decoding', async ({ p
   await expect(page.getByText('Base64 document exceeds the 10 MB browser download limit')).toBeVisible();
 });
 
+for (const documentState of ['base64','malformed','oversized'] as const) {
+  test(`manual result shares ${documentState} document behavior`,async({page},testInfo)=>{
+    test.skip(testInfo.project.name!=='chromium','One engine proves manual representation parity; the shared renderer runs across the route matrix.');
+    const data=purchaseResult(false,true); const documents=data.documents as Record<string,unknown>;
+    if(documentState==='malformed')documents.invoice_doc='not-base64!';
+    if(documentState==='oversized')documents.invoice_doc='A'.repeat(13_981_020);
+    await mockApi(page,{purchaseData:data});await reachManualPayment(page);await page.locator('#manual-pay').click();
+    const result=page.locator('#manual-workspace .shared-shipment-result');
+    if(documentState==='base64'){await expect(result.locator('.document-card[download]')).toHaveCount(2);await expect(result.getByText('Not requested',{exact:true})).toBeVisible();}
+    if(documentState==='malformed')await expect(result.getByText('Malformed Base64 document')).toBeVisible();
+    if(documentState==='oversized')await expect(result.getByText('Base64 document exceeds the 10 MB browser download limit')).toBeVisible();
+  });
+}
+
 test('quantity two remains two physical units with exact unit weight and gross packaging semantics', async ({ page }) => {
   const fixture = await mockApi(page); await login(page); await reachPaymentWithQuantity(page, '2'); await page.locator('#pay-button').click();
   await expect(page.locator('#result-section')).toBeVisible(); expect(fixture.purchase).toBeDefined();
@@ -376,12 +390,13 @@ test('built Pages artifact loads and navigates both demo routes without asset or
   page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
   await page.goto('http://127.0.0.1:4175/', { waitUntil: 'networkidle' });
   await expect(page).toHaveTitle(/Africanies Store/); await expect(page.locator('.test-badge')).toContainText('SANDBOX · SFN');
+  await expect(page.locator('link[rel="stylesheet"]')).toHaveCount(1);await expect(page.locator('link[rel="stylesheet"]')).toHaveAttribute('href',/\/assets\/.*\.css$/);
   await expect(page.locator('#encoded-key')).toBeVisible(); await page.getByRole('link', { name: 'Manual packaging lab' }).click();
   await expect(page).toHaveURL(/manual\.html$/); await expect(page.locator('#manual-key')).toBeVisible(); await expect(page).toHaveTitle(/Manual Packaging Lab/);
   await page.locator('#manual-key').fill(credential); await page.getByRole('button', { name: 'Validate and open lab' }).click();
   const builtBuilder = page.locator('africanies-shipment-builder');
   await expect(builtBuilder.getByRole('heading', { name: 'Create shipment' })).toBeVisible(); await expect(builtBuilder.getByRole('button', { name: 'Continue' })).toBeVisible();
-  expect(await builtBuilder.evaluate((element) => element.constructor === customElements.get('africanies-shipment-builder') && element.shadowRoot !== null)).toBe(true);
+  expect(await builtBuilder.evaluate((element) => element.constructor === customElements.get('africanies-shipment-builder') && element.shadowRoot !== null && (element.shadowRoot.adoptedStyleSheets.length>0||Boolean(element.shadowRoot.querySelector('style')?.textContent?.includes('--africanies-accent'))))).toBe(true);
   await page.getByRole('link', { name: 'Automatic checkout' }).click(); await expect(page.locator('#encoded-key')).toBeVisible();
   expect(failures).toEqual([]); expect(consoleErrors).toEqual([]);
 });

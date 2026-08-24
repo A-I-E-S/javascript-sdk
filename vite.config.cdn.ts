@@ -11,7 +11,8 @@ export default defineConfig({
       formats: ['iife'],
       fileName: () => 'africanies-shipping.global.js',
     },
-    sourcemap: true,
+    // The inline Tailwind stylesheet has no trustworthy transform source map.
+    sourcemap: false,
     emptyOutDir: false,
   },
 });

@@ -44,6 +44,13 @@ test('automatic and manual checkout use one complete secure shipment-result rend
   assert.doesNotMatch(manual,/Not returned as HTTPS URL/);
 });
 
+test('both routes use one build-time Tailwind entry without runtime CDN dependencies',async()=>{
+  const [automatic,manual,css,config]=await Promise.all([source('src/main.js'),source('src/manual.js'),source('src/tailwind.css'),source('vite.config.js')]);
+  assert.match(automatic,/import '\.\/tailwind\.css'/);assert.match(manual,/import '\.\/tailwind\.css'/);
+  assert.match(css,/@import "tailwindcss" source\(none\)/);assert.match(css,/@source/);assert.match(config,/tailwindcss\(\)/);
+  assert.doesNotMatch(`${automatic}\n${manual}\n${css}`,/cdn\.tailwindcss\.com|https:\/\/fonts\./);
+});
+
 test('automatic delivery uses dependent country and state selects', async () => {
   const [page,main]=await Promise.all([source('index.html'),source('src/main.js')]);
   assert.match(page,/id="receiver-country"[^>]*name="country"/); assert.match(page,/id="receiver-state"[^>]*name="state"/);

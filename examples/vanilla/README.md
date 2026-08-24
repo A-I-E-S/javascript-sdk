@@ -17,8 +17,8 @@ The credential is held in page memory only and cleared from the input after ever
 
 ## Two independent demos
 
-- `/` is the default automatic mini-commerce checkout intended to show an end-customer journey.
-- `/manual.html` is a separate host-integration lab. It exercises the SDK's manual packaging mode and requires the tester to provide every box and item dimension, gross/unit weight, quantity, value, and Products API classification. Manual mode is explicitly an integrating-application decision and is not presented as a customer checkout choice.
+- [Hosted automatic checkout](https://a-i-e-s.github.io/javascript-sdk/) is the default configurable-box mini-commerce journey.
+- [Hosted manual packaging lab](https://a-i-e-s.github.io/javascript-sdk/manual.html) is a separate host-integration surface. It exercises the SDK's manual packaging mode and requires the tester to provide every box and item dimension, gross/unit weight, quantity, value, and Products API classification. Manual mode is explicitly an integrating-application decision and is not presented as a customer checkout choice.
 
 Both pages validate their own in-memory sandbox credential and provide Logout. They link to each other and are emitted as separate entries in the same GitHub Pages artifact.
 

@@ -59,12 +59,19 @@ async function classifyAndAdd(page: Page, quantity = '1'): Promise<void> {
   await expect(page.locator('#checkout-button')).toBeEnabled();
 }
 
+async function selectRate(page: Page): Promise<void> {
+  const card = page.locator('.rate-card').filter({ hasText: rate.name });
+  await card.click();
+  await expect(card.locator('input[name="rate"]')).toBeChecked();
+  await expect(page.locator('#rate-button')).toBeEnabled();
+}
+
 async function reachPayment(page: Page, insured = false): Promise<void> {
   await classifyAndAdd(page); await page.locator('#checkout-button').click();
   if (insured) await page.locator('#insured').check();
   await page.getByRole('button', { name: 'Calculate packaging and rates' }).click();
   await expect(page.getByText(rate.name)).toBeVisible();
-  await page.locator('input[name="rate"]').check(); await page.locator('#rate-button').click();
+  await selectRate(page); await page.locator('#rate-button').click();
   await expect(page.locator('#payment-section')).toBeVisible();
 }
 
@@ -72,7 +79,7 @@ async function reachPaymentWithQuantity(page: Page, quantity: string, insured = 
   await classifyAndAdd(page, quantity); await page.locator('#checkout-button').click();
   if (insured) await page.locator('#insured').check();
   await page.getByRole('button', { name: 'Calculate packaging and rates' }).click();
-  await page.locator('input[name="rate"]').check(); await page.locator('#rate-button').click();
+  await selectRate(page); await page.locator('#rate-button').click();
 }
 
 test('uninsured SFN checkout preserves unit weight, selected rate, payment, tracking and URL documents', async ({ page }) => {
@@ -112,6 +119,7 @@ test('oversized Base64 document is rejected before browser decoding', async ({ p
 
 test('quantity two remains two physical units with exact unit weight and gross packaging semantics', async ({ page }) => {
   const fixture = await mockApi(page); await login(page); await reachPaymentWithQuantity(page, '2'); await page.locator('#pay-button').click();
+  await expect(page.locator('#result-section')).toBeVisible(); expect(fixture.purchase).toBeDefined();
   const boxes = fixture.purchase?.boxes as Array<{ weight: number; items: Array<{ weight: number; quantity: number }> }>;
   const items = boxes.flatMap((box) => box.items);
   expect(items.reduce((total, item) => total + item.quantity, 0)).toBe(2);

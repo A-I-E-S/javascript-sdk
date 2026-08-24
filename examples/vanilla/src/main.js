@@ -11,6 +11,15 @@ const html = (value) => String(value).replace(/[&<>'"]/g, (character) => ({ '&':
 const state = { client: null, cart: {}, classifications: {}, productSearches: {}, lines: [], packaging: null, rateRequest: null, rates: [], quote: null, selection: null, selectedRate: null, payment: null, purchaseIntent: null, externalReference: null, purchaseState: 'idle', documentUrls: [] };
 
 function error(message = '') { const node = $('#app-error'); node.textContent = message; node.hidden = !message; if (message) node.focus(); }
+function userFacingError(cause, fallback) {
+  if (cause instanceof Shipping.AfricaniesError && Array.isArray(cause.data) && cause.data.length) {
+    const details = cause.data.flatMap((issue) => issue && typeof issue === 'object'
+      && typeof issue.path === 'string' && typeof issue.message === 'string'
+      ? [`${issue.path}: ${issue.message}`] : []);
+    if (details.length) return details.join(' ');
+  }
+  return cause instanceof Error ? cause.message : fallback;
+}
 function show(id) { const order = ['catalog-section', 'address-section', 'shipping-section', 'payment-section', 'result-section']; const active = order.indexOf(id); for (const section of document.querySelectorAll('#store-view > section.content')) section.hidden = section.id !== id; document.querySelectorAll('[data-progress]').forEach((step) => { const index = Number(step.dataset.progress); step.classList.toggle('active', index === active); step.classList.toggle('done', index < active); if (index === active) step.setAttribute('aria-current', 'step'); else step.removeAttribute('aria-current'); }); error(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
 function setBusy(button, busy, label) { button.disabled = busy; if (busy) { button.dataset.label = button.textContent; button.textContent = label; } else if (button.dataset.label) button.textContent = button.dataset.label; }
 
@@ -89,7 +98,7 @@ $('#address-form').addEventListener('submit', async (event) => {
     state.rates = response.data; if (!Array.isArray(state.rates) || state.rates.length === 0) throw new Error('No shipping rates were returned for this cart.');
     state.quote = Shipping.createCheckoutShippingQuote(state.rateRequest, state.packaging, state.rates);
     renderPackaging(); renderRates(); show('shipping-section');
-  } catch (cause) { error(cause instanceof Error ? cause.message : 'Packaging or rates could not be calculated.'); }
+  } catch (cause) { error(userFacingError(cause, 'Packaging or rates could not be calculated.')); }
   finally { setBusy(button, false); }
 });
 

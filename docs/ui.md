@@ -1,5 +1,7 @@
 # AfricanIES Shipping UI
 
+For a complete three-stage host application, see the [standalone elements example](../examples/elements-standalone/). After `npm run build`, serve the repository root and open `http://localhost:8000/examples/elements-standalone/`. The full custom storefront remains available at https://a-i-e-s.github.io/javascript-sdk/.
+
 See the UI in the canonical sandbox-only [automatic UAT demo](https://a-i-e-s.github.io/javascript-sdk/) or compare the [host-controlled manual packaging lab](https://a-i-e-s.github.io/javascript-sdk/manual.html). Both accept a tester-provided sandbox Base64 credential at runtime; no credential is shipped with the pages.
 
 The package provides three independently mountable native custom elements:
@@ -137,3 +139,5 @@ import {
   preparePurchaseRequest,
 } from '@africanies/shipping/ui';
 ```
+
+Each controller exposes immutable `state`, calls a subscriber immediately through `subscribe(listener)`, and returns an unsubscribe function. `ShipmentBuilderController.replace/validate/complete` owns drafts; `RateSelectionController.load/select/cancel` owns rate loading; `PurchaseController.submit/cancel` locks purchase submission; and `UploadController.add/upload/retry/remove` owns signed uploads. See the [API matrix](./api-reference.md) for their entry point and related request validators.

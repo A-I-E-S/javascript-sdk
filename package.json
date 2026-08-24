@@ -12,6 +12,8 @@
   "files": [
     "dist",
     "docs",
+    "examples/headless-node",
+    "examples/elements-standalone",
     "CHANGELOG.md",
     "README.md",
     "SECURITY.md"
@@ -60,8 +62,9 @@
     "test:browser:built": "playwright test",
     "pack:check": "npm pack --dry-run",
     "pack:consumer": "node ./scripts/verify-packed-consumer.mjs",
+    "docs:check": "node ./scripts/verify-documentation-examples.mjs",
     "preview": "vite preview",
-    "verify": "npm run check && npm test && npm run build && npm run pack:check"
+    "verify": "npm run check && npm test && npm run build && npm run docs:check && npm run pack:check"
   },
   "keywords": [
     "africanies",

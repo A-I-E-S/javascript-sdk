@@ -1,5 +1,7 @@
 # Checkout packaging
 
+Run the complete deterministic [automatic checkout](../examples/headless-node/automatic-checkout.mjs) or [manual packaging](../examples/headless-node/manual-packaging.mjs) example after `npm run build`. The focused snippets below assume the surrounding values shown by those examples.
+
 Automatic packaging is optional and additive. Existing applications can continue to construct `ShipmentRateRequest.boxes` themselves or use the existing shipment builder. A host that opts into the helper gets automatic mode by omitting `mode`; a host selects manual mode explicitly with `{ mode: 'manual', boxes }`. This choice belongs to the integrating application, not its checkout customer.
 
 ```ts

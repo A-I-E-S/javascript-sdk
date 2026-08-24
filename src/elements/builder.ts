@@ -223,6 +223,8 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
       this.#productQueries.set(key, input.value); this.#productSearches.get(key)?.controller.abort(); this.#productSearches.delete(key);
       const pending = this.#productDebounces.get(key); if (pending !== undefined) clearTimeout(pending);
       const item = this.#value!.boxes[boxIndex]!.items[itemIndex]!; item.product_hs_code = ''; delete item.product_hs_code_description; this.#productResults.delete(key);
+      this.#productOpen.delete(key); this.#productActive.delete(key); input.setAttribute('aria-expanded','false'); input.removeAttribute('aria-activedescendant'); const combobox=input.closest('.combobox'); combobox?.querySelector('.selected-product')?.remove(); combobox?.querySelector<HTMLElement>('[role="listbox"]')?.setAttribute('hidden','');
+      this.emit('africanies-change', clone(this.#value!));
       if (input.value.trim().length < 3) { this.#productStatus.set(key, 'Type at least 3 characters to search.'); this.#productDebounces.delete(key); return; }
       this.#productStatus.set(key, 'Waiting to search…');
       this.#productDebounces.set(key, window.setTimeout(() => { this.#productDebounces.delete(key); void this.searchProducts(boxIndex, itemIndex); }, 350));
@@ -287,6 +289,12 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
     this.#productDebounces.clear();
   }
 
+  private clearProductInteractionState(): void {
+    this.cancelProductSearches();
+    this.#productQueries.clear(); this.#productResults.clear(); this.#productStatus.clear();
+    this.#productOpen.clear(); this.#productActive.clear();
+  }
+
   private handleAction(event: Event): void {
     const option = (event.target as Element).closest<HTMLElement>('[data-product-option]');
     if (option) { this.selectProduct(Number(option.dataset.box), Number(option.dataset.item), Number(option.dataset.index)); return; }
@@ -300,10 +308,10 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
       this.#value!.boxes.push(emptyBox(nextIndex));
       changed = true;
     }
-    if (button.dataset.action === 'remove-box' && this.#value!.boxes.length > 1) { this.#value!.boxes.splice(boxIndex, 1); changed = true; }
+    if (button.dataset.action === 'remove-box' && this.#value!.boxes.length > 1) { this.#value!.boxes.splice(boxIndex, 1); this.clearProductInteractionState(); changed = true; }
     if (button.dataset.action === 'add-item') { this.#value!.boxes[boxIndex]!.items.push(emptyItem()); changed = true; }
-    if (button.dataset.action === 'remove-item' && this.#value!.boxes[boxIndex]!.items.length > 1) { this.#value!.boxes[boxIndex]!.items.splice(Number(button.dataset.item), 1); changed = true; }
-    if (button.dataset.action === 'clear-product') { const itemIndex=Number(button.dataset.item); const key=`${boxIndex}:${itemIndex}`; const item=this.#value!.boxes[boxIndex]!.items[itemIndex]!; item.product_hs_code=''; delete item.product_hs_code_description; this.#productQueries.set(key,''); this.#productResults.delete(key); this.#productOpen.delete(key); changed=true; }
+    if (button.dataset.action === 'remove-item' && this.#value!.boxes[boxIndex]!.items.length > 1) { this.#value!.boxes[boxIndex]!.items.splice(Number(button.dataset.item), 1); this.clearProductInteractionState(); changed = true; }
+    if (button.dataset.action === 'clear-product') { const itemIndex=Number(button.dataset.item); const key=`${boxIndex}:${itemIndex}`; this.#productSearches.get(key)?.controller.abort(); this.#productSearches.delete(key); const pending=this.#productDebounces.get(key); if(pending!==undefined)clearTimeout(pending); this.#productDebounces.delete(key); const item=this.#value!.boxes[boxIndex]!.items[itemIndex]!; item.product_hs_code=''; delete item.product_hs_code_description; this.#productQueries.set(key,''); this.#productResults.delete(key); this.#productOpen.delete(key); this.#productActive.delete(key); changed=true; }
     if (!changed) return;
     this.render();
     this.emit('africanies-change', clone(this.#value!));
@@ -311,7 +319,7 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
 
   private selectProduct(boxIndex:number,itemIndex:number,index:number):void { const key=`${boxIndex}:${itemIndex}`; const product=this.#productResults.get(key)?.[index]; if(!product)return; const item=this.#value!.boxes[boxIndex]!.items[itemIndex]!; item.product_hs_code=product.hs_code; item.product_hs_code_description=product.name; this.#productQueries.set(key,product.name); this.#productOpen.delete(key); this.#productStatus.set(key,`${product.name} · HS ${product.hs_code}`); this.emit('africanies-change',clone(this.#value!)); this.render(); }
 
-  private handleProductKeydown(event:KeyboardEvent):void { const input=(event.target as Element).closest<HTMLInputElement>('[data-product-query]'); if(!input)return; const box=Number(input.dataset.box), item=Number(input.dataset.item), key=`${box}:${item}`; const results=this.#productResults.get(key)??[]; if(event.key==='Escape'){this.#productOpen.delete(key);this.render();return;} if(!results.length)return; let active=this.#productActive.get(key)??0; if(event.key==='ArrowDown'){event.preventDefault();active=(active+1)%results.length;} else if(event.key==='ArrowUp'){event.preventDefault();active=(active-1+results.length)%results.length;} else if(event.key==='Enter'&&this.#productOpen.has(key)){event.preventDefault();this.selectProduct(box,item,active);return;} else return; this.#productActive.set(key,active);this.#productOpen.add(key);this.render();this.root.querySelector<HTMLInputElement>(`[data-product-query][data-box="${box}"][data-item="${item}"]`)?.focus(); }
+  private handleProductKeydown(event:KeyboardEvent):void { const input=(event.target as Element).closest<HTMLInputElement>('[data-product-query]'); if(!input)return; const box=Number(input.dataset.box), item=Number(input.dataset.item), key=`${box}:${item}`; const results=this.#productResults.get(key)??[]; if(event.key==='Escape'){this.#productOpen.delete(key);input.setAttribute('aria-expanded','false');input.removeAttribute('aria-activedescendant');this.root.querySelector<HTMLElement>(`#product-list-${box}-${item}`)?.setAttribute('hidden','');return;} if(!results.length)return; let active=this.#productActive.get(key)??0; if(event.key==='ArrowDown'){event.preventDefault();active=(active+1)%results.length;} else if(event.key==='ArrowUp'){event.preventDefault();active=(active-1+results.length)%results.length;} else if(event.key==='Enter'&&this.#productOpen.has(key)){event.preventDefault();this.selectProduct(box,item,active);return;} else return; this.#productActive.set(key,active);this.#productOpen.add(key);this.render();this.root.querySelector<HTMLInputElement>(`[data-product-query][data-box="${box}"][data-item="${item}"]`)?.focus(); }
 
   private issueFor(path: string): ValidationIssue | undefined {
     return this.#issues.find((issue) => issue.path === path);

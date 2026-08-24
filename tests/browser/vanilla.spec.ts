@@ -65,11 +65,11 @@ async function reachManualPayment(page: Page): Promise<void> {
   await manualLogin(page);
   const builder = page.locator('africanies-shipment-builder');
   for (let step = 0; step < 3; step += 1) await builder.getByRole('button', { name: 'Continue' }).click();
-  await builder.getByLabel('Item name').fill('Safety helmet');
-  await builder.getByLabel('Description').fill('Protective head gear');
-  await builder.locator('[data-product-query]').fill('head gear');
-  await expect(builder.getByLabel('Select product classification')).toBeVisible();
-  await builder.getByLabel('Select product classification').selectOption(product.hs_code);
+  const itemCount = await builder.locator('.item').count();
+  for (let itemIndex = 0; itemIndex < itemCount; itemIndex += 1) {
+    const item = builder.locator('.item').nth(itemIndex); await item.locator('[data-product-query]').fill('head gear');
+    await expect(item.locator('[data-product-option]')).toBeVisible(); await item.locator('[data-product-option]').first().click();
+  }
   await builder.getByRole('button', { name: 'Continue' }).click();
   await builder.getByRole('button', { name: /Create shipment/ }).click();
   const rates = page.locator('africanies-rate-selection');
@@ -81,8 +81,8 @@ async function reachManualPayment(page: Page): Promise<void> {
 
 async function classifyAndAdd(page: Page, quantity = '1'): Promise<void> {
   await page.locator('[data-product="headgear"].quantity').fill(quantity);
-  await page.locator('button[data-product="headgear"].search-product').click();
-  await page.locator('[data-product-results="headgear"]').selectOption(product.hs_code);
+  await page.locator('[data-product-search="headgear"]').fill('head gear');
+  await page.locator('[data-product-results="headgear"] [data-product-option]').first().click();
   await expect(page.locator('#checkout-button')).toBeEnabled();
 }
 
@@ -149,8 +149,9 @@ test('typed HS search debounces, cancels stale work, and supports keyboard class
   await input.fill('helmet'); await page.waitForTimeout(100); await input.fill('head gear');
   await expect.poll(() => searchUrls.map((url) => decodeURIComponent(url))).toEqual([expect.stringContaining('/product/search/head gear')]);
   const select = page.locator('[data-product-results="headgear"]'); await expect(page.locator('[data-product-status="headgear"]')).toContainText('1 matching classifications found.'); await expect(select).toBeVisible(); await expect(select).toContainText(product.name);
-  await page.locator('[data-product="headgear"].quantity').fill('1'); await select.focus(); await select.press('ArrowDown'); await select.press('Enter');
+  await page.locator('[data-product="headgear"].quantity').fill('1'); await input.press('Enter');
   await expect(page.locator('[data-product-status="headgear"]')).toContainText(`HS ${product.hs_code}`); await expect(page.locator('#checkout-button')).toBeEnabled();
+  await page.locator('[data-clear-product="headgear"]').click(); await expect(page.locator('#checkout-button')).toBeDisabled(); await expect(page.locator('[data-product-selection="headgear"]')).toBeEmpty();
 });
 
 test('PayDemo review presents merchandise, selected delivery, carrier and full total before intent-bound purchase', async ({ page }) => {
@@ -162,12 +163,12 @@ test('PayDemo review presents merchandise, selected delivery, carrier and full t
 
 test('manual host lab completes classified boxes, rates, full PayDemo, purchase, tracking and URL documents', async ({ page }) => {
   const fixture = await mockApi(page); await reachManualPayment(page);
-  await expect(page.locator('.manual-payment')).toContainText(rate.name); await expect(page.locator('.manual-payment')).toContainText('30,500');
+  await expect(page.locator('.manual-payment')).toContainText(rate.name); await expect(page.locator('.manual-payment')).toContainText('15,000');
   await page.locator('#manual-pay').click(); await expect(page.locator('.manual-result')).toContainText('TRACK-UAT-1');
   await expect(page.locator('.manual-result .document-card')).toHaveCount(3); expect(fixture.purchaseCount).toBe(1);
   expect(fixture.purchase).toMatchObject({ file_is_url: 1, is_insured: '0', shipment_method_slug: rate.slug });
   const boxes = fixture.purchase?.boxes as Array<{ weight: number; items: Array<{ weight: number; quantity: number; product_hs_code: string }> }>;
-  expect(boxes[0]).toMatchObject({ weight: 2 }); expect(boxes[0]!.items[0]).toMatchObject({ weight: 0.8, quantity: 1, product_hs_code: product.hs_code });
+  expect(boxes[0]).toMatchObject({ weight: 5 }); expect(boxes[0]!.items).toHaveLength(2); expect(boxes[0]!.items[0]).toMatchObject({ weight: 1.5, quantity: 1, product_hs_code: product.hs_code });
 });
 
 test('manual host lab validates classification before requesting rates', async ({ page }, testInfo) => {
@@ -235,7 +236,7 @@ test('credential ping rejects invalid auth without leaking or persisting the cre
 test('a new Products search invalidates the previous HS selection and no-match blocks checkout', async ({ page }) => {
   let searches = 0;
   await page.route(apiPattern, async (route) => { const path = new URL(route.request().url()).pathname; let data: unknown = []; if (path.includes('/product/search/')) { searches += 1; data = searches === 1 ? [product] : []; } await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(envelope(data)) }); });
-  await login(page); await classifyAndAdd(page); await page.locator('button[data-product="headgear"].search-product').click();
+  await login(page); await classifyAndAdd(page); await page.locator('[data-product-search="headgear"]').fill('no matching classification');
   await expect(page.locator('[data-product-status="headgear"]')).toContainText('No matching products'); await expect(page.locator('#checkout-button')).toBeDisabled();
 });
 

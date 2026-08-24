@@ -78,11 +78,11 @@ async function reachManualPayment(page: Page): Promise<void> {
   }
   await builder.getByRole('button', { name: 'Continue' }).click();
   await builder.getByRole('button', { name: /Create shipment/ }).click();
-  const rates = page.locator('africanies-rate-selection');
+  const rates = page.locator('.shared-rates-panel');
   await expect(rates.getByText(rate.name)).toBeVisible();
-  await rates.locator(`button[data-slug="${rate.slug}"]`).click();
-  await rates.getByRole('button', { name: 'Continue' }).click();
-  await expect(page.locator('.manual-payment')).toBeVisible();
+  await rates.locator('.rate-card').filter({hasText:rate.name}).click();
+  await rates.getByRole('button', { name: 'Continue to PayDemo' }).click();
+  await expect(page.locator('#manual-workspace .shared-paydemo')).toBeVisible();
 }
 
 async function classifyAndAdd(page: Page, quantity = '1'): Promise<void> {
@@ -95,8 +95,8 @@ async function classifyAndAdd(page: Page, quantity = '1'): Promise<void> {
 async function selectRate(page: Page): Promise<void> {
   const card = page.locator('.rate-card').filter({ hasText: rate.name });
   await card.click();
-  await expect(card.locator('input[name="rate"]')).toBeChecked();
-  await expect(page.locator('#rate-button')).toBeEnabled();
+  await expect(card.locator('input[name="shared-rate"]')).toBeChecked();
+  await expect(page.locator('.shared-rate-continue')).toBeEnabled();
 }
 
 async function reachPayment(page: Page, insured = false): Promise<void> {
@@ -104,7 +104,7 @@ async function reachPayment(page: Page, insured = false): Promise<void> {
   if (insured) await page.locator('#insured').check();
   await page.getByRole('button', { name: 'Calculate packaging and rates' }).click();
   await expect(page.getByText(rate.name)).toBeVisible();
-  await selectRate(page); await page.locator('#rate-button').click();
+  await selectRate(page); await page.locator('.shared-rate-continue').click();
   await expect(page.locator('#payment-section')).toBeVisible();
 }
 
@@ -112,7 +112,7 @@ async function reachPaymentWithQuantity(page: Page, quantity: string, insured = 
   await classifyAndAdd(page, quantity); await page.locator('#checkout-button').click();
   if (insured) await page.locator('#insured').check();
   await page.getByRole('button', { name: 'Calculate packaging and rates' }).click();
-  await selectRate(page); await page.locator('#rate-button').click();
+  await selectRate(page); await page.locator('.shared-rate-continue').click();
 }
 
 test('uninsured SFN checkout preserves unit weight, selected rate, payment, tracking and URL documents', async ({ page }) => {
@@ -198,7 +198,7 @@ test('PayDemo review presents merchandise, selected delivery, carrier and full t
 
 test('manual host lab completes classified boxes, rates, full PayDemo, purchase, tracking and URL documents', async ({ page }) => {
   const fixture = await mockApi(page); await reachManualPayment(page);
-  await expect(page.locator('.manual-payment')).toContainText(rate.name); await expect(page.locator('.manual-payment')).toContainText('15,000');
+  await expect(page.locator('#manual-workspace .shared-paydemo')).toContainText(rate.name); await expect(page.locator('#manual-workspace .shared-paydemo')).toContainText('15,000');
   await page.locator('#manual-pay').click(); await expect(page.locator('.manual-result')).toContainText('TRACK-UAT-1');
   const paymentRecord = page.locator('.manual-result .payment-record');
   await expect(paymentRecord.getByText('PAYDEMO FULL ORDER + DELIVERY', { exact: true })).toBeVisible();
@@ -210,6 +210,15 @@ test('manual host lab completes classified boxes, rates, full PayDemo, purchase,
   expect(fixture.purchase).toMatchObject({ file_is_url: 1, is_insured: '0', shipment_method_slug: rate.slug });
   const boxes = fixture.purchase?.boxes as Array<{ weight: number; items: Array<{ weight: number; quantity: number; product_hs_code: string }> }>;
   expect(boxes[0]).toMatchObject({ weight: 5 }); expect(boxes[0]!.items).toHaveLength(2); expect(boxes[0]!.items[0]).toMatchObject({ weight: 1.5, quantity: 1, product_hs_code: product.hs_code });
+});
+
+test('automatic and manual checkout mount identical shared PayDemo structure', async ({page})=>{
+  await mockApi(page);await login(page);await reachPayment(page);
+  const signature=async(selector:string)=>page.locator(selector).evaluate((root)=>{const walk=(node:Element):unknown=>[node.tagName.toLowerCase(),[...node.classList].sort(),[...node.children].map((child)=>walk(child))];return walk(root);});
+  const automatic=await signature('#payment-section .shared-paydemo');
+  await reachManualPayment(page);
+  const manual=await signature('#manual-workspace .shared-paydemo');
+  expect(manual).toEqual(automatic);
 });
 
 test('manual host lab validates classification before requesting rates', async ({ page }, testInfo) => {

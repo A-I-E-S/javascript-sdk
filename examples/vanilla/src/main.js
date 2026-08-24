@@ -1,5 +1,6 @@
 import * as Shipping from '@africanies/shipping/browser';
 import './styles.css';
+import { mountSharedRates, mountSharedPayDemo } from './shared-checkout-ui.js';
 import {
   DEMO_PRODUCTS, WAREHOUSE_ADDRESS, cartLines, cartTotals, createPackagingInput,
   receiverFromForm, shippingAmount, minimumAssignedDate, payDemoResult,
@@ -136,29 +137,26 @@ function renderPackaging() {
 }
 
 function renderRates() {
-  state.selectedRate = null; $('#rate-button').disabled = true;
-  $('#rates').innerHTML = `<div class="rates-title"><h3>Select shipment carrier</h3><span>STEP 1/2</span></div>${state.rates.map((rate, index) => `<label class="rate-card"><input type="radio" name="rate" value="${index}"><span class="carrier-name"><i aria-hidden="true">A</i><strong>${html(rate.name)}</strong></span><span class="rate-availability"><small>Available</small><b>${html(money(rate.payment_amount, rate.others.currency))}</b></span><span class="transit"><small>Estimated transit time</small><strong>${html(rate.others.min_day)}–${html(rate.others.max_day)} business days</strong></span><span class="select-copy">Select</span></label>`).join('')}`;
-  document.querySelectorAll('input[name="rate"]').forEach((input) => input.addEventListener('change', () => { state.selectedRate = state.rates[Number(input.value)]; state.selection = Shipping.selectCheckoutRate(state.quote, state.selectedRate.slug); state.payment = null; state.purchaseIntent = null; state.externalReference = null; state.purchaseState = 'idle'; $('#rate-button').disabled = false; }));
+  state.selectedRate = null;
+  mountSharedRates($('#rates'),{rates:state.rates,onSelect:(rate)=>{state.selectedRate=rate;state.selection=Shipping.selectCheckoutRate(state.quote,rate.slug);state.payment=null;state.purchaseIntent=null;state.externalReference=null;state.purchaseState='idle';},onContinue:()=>{state.externalReference??=`PAYDEMO-${crypto.randomUUID?.()??Date.now()}`;renderOrderSummary();show('payment-section');}});
 }
 
-$('#rate-button').addEventListener('click', () => { state.externalReference ??= `PAYDEMO-${crypto.randomUUID?.() ?? Date.now()}`; renderOrderSummary(); show('payment-section'); $('#payment-outcome').focus(); });
 function renderOrderSummary() {
   const totals = cartTotals(state.lines); const shipping = shippingAmount(state.selectedRate); const currency = state.selectedRate.others.currency;
   const insurance = state.rateRequest?.is_insured === '1' ? Number(state.selectedRate.charges.insurance_cost ?? 0) : 0;
-  $('#payment-context').innerHTML = `<div><dt>Merchant</dt><dd>Africanies Demo Store</dd></div><div><dt>Order reference</dt><dd>${html(state.externalReference)}</dd></div><div><dt>Selected carrier</dt><dd>${html(state.selectedRate.name)}</dd></div><div><dt>Payment currency</dt><dd>${html(currency)}</dd></div>`;
-  $('#order-summary').innerHTML = `<div class="summary-heading"><div><p class="eyebrow">Order summary</p><h3>Full order + delivery</h3></div><span>${html(currency)}</span></div><div class="summary-row"><span>Merchandise subtotal <small>${totals.quantity} item${totals.quantity === 1 ? '' : 's'}</small></span><strong>${html(money(totals.subtotal, currency))}</strong></div><div class="summary-row"><span>Delivery <small>${html(state.selectedRate.name)}</small></span><strong>${html(money(shipping, currency))}</strong></div>${state.rateRequest?.is_insured === '1' ? `<div class="summary-note"><span>Insurance included in delivery</span><strong>${html(money(insurance, currency))}</strong></div>` : '<div class="summary-note"><span>Shipment insurance</span><strong>Not requested</strong></div>'}<div class="summary-row total"><span>Full payment total</span><strong>${html(money(totals.subtotal + shipping, currency))}</strong></div><p class="intent-note">PayDemo confirms this full total. The SDK shipping intent remains bound only to the selected delivery amount.</p>`;
-  $('#payment-status').textContent = 'No payment has been attempted.'; $('#payment-status').className = 'message';
+  mountSharedPayDemo($('#payment-section'),{reference:state.externalReference,carrier:state.selectedRate.name,merchandise:totals.subtotal,shipping,insurance,insured:state.rateRequest?.is_insured==='1',currency,onBack:()=>show('shipping-section'),onSubmit:purchaseAutomatic});
+  $('#payment-section .payment-context').id='payment-context';$('#payment-section .order-summary').id='order-summary';$('#payment-section .shared-payment-outcome').id='payment-outcome';$('#payment-section .shared-pay-button').id='pay-button';$('#payment-section .shared-payment-status').id='payment-status';
 }
 
-$('#pay-button').addEventListener('click', async (event) => {
-  const button = event.currentTarget; setBusy(button, true, 'Processing PayDemo…'); error();
-  $('#payment-status').textContent = 'PayDemo is simulating the full order and delivery payment…'; $('#payment-status').className = 'message processing';
+async function purchaseAutomatic({outcome,button,status}) {
+  setBusy(button, true, 'Processing PayDemo…'); error();
+  status.textContent = 'PayDemo is simulating the full order and delivery payment…'; status.className = 'message shared-payment-status processing';
   try {
     if (state.purchaseState === 'uncertain') throw new Error('The previous purchase result is uncertain. Reconcile the existing external reference before retrying.');
     const totals = cartTotals(state.lines); const orderAmount = totals.subtotal + state.selection.shippingCost;
-    state.payment = payDemoResult($('#payment-outcome').value, { amount: orderAmount, currency: state.selection.currency });
+    state.payment = payDemoResult(outcome, { amount: orderAmount, currency: state.selection.currency });
     if (!state.payment.confirmed) throw new Error(`PayDemo payment was ${state.payment.status}. The shipment was not purchased.`);
-    $('#payment-status').textContent = `Full payment approved · ${state.payment.id} · ${money(state.payment.amount, state.payment.currency)}`; $('#payment-status').className = 'message success-message';
+    status.textContent = `Full payment approved · ${state.payment.id} · ${money(state.payment.amount, state.payment.currency)}`; status.className = 'message shared-payment-status success-message';
     const prepared = Shipping.preparePurchaseRequest(state.rateRequest, {
       assignedDate: minimumAssignedDate(), externalReference: state.externalReference ??= `PAYDEMO-${crypto.randomUUID?.() ?? Date.now()}`,
       rate: state.selectedRate, shipmentMethodSlug: state.selectedRate.slug, fileIsUrl: 1,
@@ -175,10 +173,10 @@ $('#pay-button').addEventListener('click', async (event) => {
     if (state.purchaseState === 'submitting') state.purchaseState = isDefinitivePurchaseFailure(cause) ? 'failed' : 'uncertain';
     const reconciliation = state.purchaseState === 'uncertain' ? ` The result is uncertain. Reconcile external reference ${state.externalReference} before retrying.` : '';
     const message = `${cause instanceof Error ? cause.message : 'Payment or shipment purchase failed.'}${reconciliation}`;
-    $('#payment-status').textContent = message; $('#payment-status').className = 'message failure'; error(message);
+    status.textContent = message; status.className = 'message shared-payment-status failure'; error(message);
   }
   finally { setBusy(button, false); }
-});
+}
 
 function isDefinitivePurchaseFailure(cause) {
   if (!(cause instanceof Shipping.AfricaniesError)) return false;

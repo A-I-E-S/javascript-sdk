@@ -25,6 +25,29 @@ test('automatic and manual packaging demos are distinct and mutually discoverabl
   assert.match(config, /manual:\s*fileURLToPath/);
 });
 
+test('credential-free showcase exposes all SDK UI choices and actual elements',async()=>{
+  const [page,script,checkout,config]=await Promise.all([source('showcase.html'),source('src/showcase.js'),source('elements-checkout.html'),source('vite.config.js')]);
+  for(const tag of ['africanies-shipment-builder','africanies-rate-selection','africanies-purchase-confirmation'])assert.match(page,new RegExp(`<${tag}`));
+  assert.match(page,/Headless APIs/);assert.match(page,/SDK browser elements/);assert.match(page,/Fully custom host UI/);
+  assert.match(page,/LOCAL FIXTURE · NO API/);assert.match(script,/transport/);assert.doesNotMatch(script,/auth:\s*\{/);
+  assert.match(checkout,/Host-owned payment boundary/);assert.match(checkout,/all three exported custom elements/i);
+  assert.match(config,/showcase:\s*fileURLToPath/);assert.match(config,/elementsCheckout:\s*fileURLToPath/);
+});
+
+test('every public demo route has persistent base-relative navigation',async()=>{
+  const [pages,verifier]=await Promise.all([Promise.all(['index.html','manual.html','showcase.html','elements-checkout.html'].map(source)),source('../../scripts/verify-pages-artifact.mjs')]);
+  for(const page of pages){for(const href of ['./showcase.html','./','./manual.html','./elements-checkout.html'])assert.match(page,new RegExp(`href="${href.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}"`));}
+  assert.match(verifier,/\['index\.html', 'manual\.html', 'showcase\.html', 'elements-checkout\.html'\]/);
+  assert.match(verifier,/navigationTargets/);
+});
+
+test('credential-free browser coverage parses and blocks every non-local URL',async()=>{
+  const browser=await source('../../tests/browser/vanilla.spec.ts');
+  assert.match(browser,/new URL\(route\.request\(\)\.url\(\)\)/);assert.match(browser,/url\.hostname==='127\.0\.0\.1'/);assert.match(browser,/url\.port==='4174'/);
+  assert.match(browser,/externalRequests\.push\(url\.href\)/);assert.match(browser,/route\.abort\('blockedbyclient'\)/);
+  assert.doesNotMatch(browser,/url\(\)\.includes\('api-sandbox\.africaniestest\.com'\)/);
+});
+
 test('automatic and manual checkout use one shared rates and PayDemo renderer', async () => {
   const [automatic,manual,shared]=await Promise.all([source('src/main.js'),source('src/manual.js'),source('src/shared-checkout-ui.js')]);
   for(const entry of [automatic,manual]){assert.match(entry,/mountSharedRates/);assert.match(entry,/mountSharedPayDemo/);}
@@ -44,11 +67,11 @@ test('automatic and manual checkout use one complete secure shipment-result rend
   assert.doesNotMatch(manual,/Not returned as HTTPS URL/);
 });
 
-test('both routes use one build-time Tailwind entry without runtime CDN dependencies',async()=>{
-  const [automatic,manual,css,config]=await Promise.all([source('src/main.js'),source('src/manual.js'),source('src/tailwind.css'),source('vite.config.js')]);
-  assert.match(automatic,/import '\.\/tailwind\.css'/);assert.match(manual,/import '\.\/tailwind\.css'/);
+test('all routes use one build-time Tailwind entry without runtime CDN dependencies',async()=>{
+  const [automatic,manual,showcase,checkout,css,config]=await Promise.all([source('src/main.js'),source('src/manual.js'),source('src/showcase.js'),source('src/elements-checkout.js'),source('src/tailwind.css'),source('vite.config.js')]);
+  for(const entry of [automatic,manual,showcase,checkout])assert.match(entry,/import '\.\/tailwind\.css'/);
   assert.match(css,/@import "tailwindcss" source\(none\)/);assert.match(css,/@source/);assert.match(config,/tailwindcss\(\)/);
-  assert.doesNotMatch(`${automatic}\n${manual}\n${css}`,/cdn\.tailwindcss\.com|https:\/\/fonts\./);
+  assert.doesNotMatch(`${automatic}\n${manual}\n${showcase}\n${checkout}\n${css}`,/cdn\.tailwindcss\.com|https:\/\/fonts\./);
 });
 
 test('automatic delivery uses dependent country and state selects', async () => {
@@ -59,9 +82,9 @@ test('automatic delivery uses dependent country and state selects', async () => 
   assert.match(main,/shipmentMode:\s*'SFN'.*carriers\.list/s);
 });
 
-test('manual entry explicitly registers SDK browser elements for production bundles', async () => {
-  const manual = await source('src/manual.js');
-  assert.match(manual, /Shipping\.defineAfricaniesElements\(\)/);
+test('every custom-element demo entry explicitly registers elements for production bundles', async () => {
+  const entries = await Promise.all(['src/manual.js','src/showcase.js','src/elements-checkout.js'].map(source));
+  for (const entry of entries) assert.match(entry, /Shipping\.defineAfricaniesElements\(\)/);
 });
 
 test('product classification supports debounced typed search and cancellation', async () => {

@@ -28,6 +28,8 @@ test('automatic and manual checkout use one shared rates and PayDemo renderer', 
   for(const entry of [automatic,manual]){assert.match(entry,/mountSharedRates/);assert.match(entry,/mountSharedPayDemo/);}
   assert.match(shared,/class="shared-rates-panel"/);assert.match(shared,/class="shared-paydemo"/);
   assert.match(shared,/africanies-rate-selected/);assert.match(shared,/africanies-complete/);
+  assert.match(shared,/Loading shipment carriers/);assert.match(shared,/No shipping rates were returned/);
+  assert.match(shared,/shared-rate-refresh/);assert.match(manual,/error:message,onRefresh:showRates/);
 });
 
 test('manual entry explicitly registers SDK browser elements for production bundles', async () => {

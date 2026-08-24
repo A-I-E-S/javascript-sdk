@@ -138,7 +138,7 @@ function renderPackaging() {
 
 function renderRates() {
   state.selectedRate = null;
-  mountSharedRates($('#rates'),{rates:state.rates,onSelect:(rate)=>{state.selectedRate=rate;state.selection=Shipping.selectCheckoutRate(state.quote,rate.slug);state.payment=null;state.purchaseIntent=null;state.externalReference=null;state.purchaseState='idle';},onContinue:()=>{state.externalReference??=`PAYDEMO-${crypto.randomUUID?.()??Date.now()}`;renderOrderSummary();show('payment-section');}});
+  mountSharedRates($('#rates'),{rates:state.rates,onRefresh:()=>$('#address-form').requestSubmit(),onSelect:(rate)=>{state.selectedRate=rate;state.selection=Shipping.selectCheckoutRate(state.quote,rate.slug);state.payment=null;state.purchaseIntent=null;state.externalReference=null;state.purchaseState='idle';},onContinue:()=>{state.externalReference??=`PAYDEMO-${crypto.randomUUID?.()??Date.now()}`;renderOrderSummary();show('payment-section');}});
 }
 
 function renderOrderSummary() {

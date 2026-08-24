@@ -1,5 +1,12 @@
 export { AfricaniesElement } from './elements/base.js';
 export { AfricaniesShipmentBuilderElement } from './elements/builder.js';
+export type {
+  AfricaniesCountryOption,
+  AfricaniesLocationOption,
+  AfricaniesPlaceSelection,
+  AfricaniesPlacesProvider,
+  AfricaniesShipmentBuilderConfig,
+} from './elements/builder.js';
 export { AfricaniesPurchaseConfirmationElement } from './elements/purchase.js';
 export { AfricaniesRateSelectionElement } from './elements/rates.js';
 

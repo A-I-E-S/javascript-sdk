@@ -75,6 +75,13 @@ describe('AfricanIES custom elements', () => {
     expect(element.value.addresses.sender).toMatchObject({address:'1 Marina Road',city:'Lagos',state:'LA',country:'NG',zip_code:'100001',latitude:6.45,longitude:3.39,google_address:'1'});
   });
 
+  it('announces location-provider failure and retains the safe built-in selects', async () => {
+    const element=document.createElement('africanies-shipment-builder');element.config={loadCountries:vi.fn().mockRejectedValue(new Error('Location service unavailable'))};document.body.append(element);await nextTask();await nextTask();
+    expect(element.shadowRoot!.textContent).toContain('Location service unavailable');
+    const country=element.shadowRoot!.querySelector<HTMLSelectElement>('[data-address="sender"][data-field="country"]')!;
+    expect([...country.options].map((option)=>option.textContent)).toContain('Nigeria');
+  });
+
   it('emits a complete rate request from Stage 1', () => {
     const element = document.createElement('africanies-shipment-builder');
     const draft: ShipmentRateDraft = structuredClone(rateRequest());

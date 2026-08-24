@@ -298,7 +298,11 @@ for (const documentState of ['base64','malformed','oversized'] as const) {
     if(documentState==='oversized')documents.invoice_doc='A'.repeat(13_981_020);
     await mockApi(page,{purchaseData:data});await reachManualPayment(page);await page.locator('#manual-pay').click();
     const result=page.locator('#manual-workspace .shared-shipment-result');
-    if(documentState==='base64'){await expect(result.locator('.document-card[download]')).toHaveCount(2);await expect(result.getByText('Not requested',{exact:true})).toBeVisible();}
+    if(documentState==='base64'){
+      await expect(result.locator('.document-card[download]')).toHaveCount(2);
+      await expect(result.locator('.payment-record dl div').filter({hasText:'Insurance'})).toContainText('Not requested');
+      await expect(result.locator('.document-card').filter({hasText:'Insurance certificate'}).getByText('Not requested',{exact:true})).toBeVisible();
+    }
     if(documentState==='malformed')await expect(result.getByText('Malformed Base64 document')).toBeVisible();
     if(documentState==='oversized')await expect(result.getByText('Base64 document exceeds the 10 MB browser download limit')).toBeVisible();
   });

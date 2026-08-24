@@ -2,6 +2,10 @@ import * as Shipping from '@africanies/shipping/browser';
 import './styles.css';
 import { WAREHOUSE_ADDRESS, minimumAssignedDate, payDemoResult } from './demo-state.js';
 
+// Registration is explicit in this entry so production tree-shaking cannot
+// remove the custom-element definitions used by the manual host lab.
+Shipping.defineAfricaniesElements();
+
 const $ = (selector) => document.querySelector(selector);
 const money = (value, currency = 'NGN') => new Intl.NumberFormat('en-NG', { style: 'currency', currency }).format(Number(value));
 const escape = (value) => String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]);

@@ -4,6 +4,15 @@ Official TypeScript/JavaScript client and framework-neutral UI for AfricanIES sh
 
 > **Release status:** `@africanies/shipping@0.2.0` is published on npm and is the immutable stabilization baseline. Its exact source commit, npm publisher identity, and publication-approval provenance have not been verified; publication of any later version still requires separate approval.
 
+## Live UAT Demo
+
+Try the public, sandbox-only demos without installing the SDK:
+
+- [Automatic checkout](https://a-i-e-s.github.io/javascript-sdk/) — the recommended default flow; the SDK selects from configurable boxes using cart quantities, unit weights, dimensions, protective allowance, and weight limits.
+- [Manual packaging lab](https://a-i-e-s.github.io/javascript-sdk/manual.html) — the host application controls the physical boxes, item assignments, measurements, and gross weights. This is an integration choice, not a customer checkout option.
+
+Both demos require your own sandbox Base64 API credential at runtime. Credentials are not included in the site or repository; use sandbox credentials only because Base64 is encoding, not encryption.
+
 ## Installation
 
 ```sh

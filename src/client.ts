@@ -1,7 +1,7 @@
 import { resolveAuthorization, type AfricaniesAuth } from './auth.js';
 import { AfricaniesError, redactUrl } from './errors.js';
 import { createFetchTransport, type AfricaniesTransport } from './transport.js';
-import { assertShipmentRequest } from './shipment-validation.js';
+import { assertShipmentRequest, inferShipmentMode } from './shipment-validation.js';
 import type {
   AddressVerifyRequest,
   AddressVerifyResult,
@@ -30,7 +30,7 @@ export const AFRICANIES_ENVIRONMENTS = {
 
 export interface AfricaniesClientConfig {
   environment?: AfricaniesEnvironment;
-  shipmentMode: ShipmentMode;
+  shipmentMode?: ShipmentMode;
   auth?: AfricaniesAuth;
   baseUrl?: string;
   transport?: AfricaniesTransport;
@@ -49,7 +49,7 @@ export interface UploadedFile extends GeneratedUpload {
 
 export interface AfricaniesClient {
   readonly environment: AfricaniesEnvironment;
-  readonly shipmentMode: ShipmentMode;
+  readonly shipmentMode: ShipmentMode | undefined;
   readonly addresses: {
     verify(request: AddressVerifyRequest, signal?: AbortSignal): Promise<ApiEnvelope<AddressVerifyResult>>;
   };
@@ -154,8 +154,8 @@ function validateEnvironment(value: unknown): asserts value is AfricaniesEnviron
   }
 }
 
-function validateShipmentMode(value: unknown): asserts value is ShipmentMode {
-  if (value !== 'SFN' && value !== 'STN') {
+function validateShipmentMode(value: unknown): asserts value is ShipmentMode | undefined {
+  if (value !== undefined && value !== 'SFN' && value !== 'STN') {
     throw new AfricaniesError('shipmentMode must be either "SFN" or "STN".', {
       category: 'configuration',
     });
@@ -195,7 +195,7 @@ export function createAfricaniesClient(config: AfricaniesClientConfig): Africani
             });
           })(),
       ),
-      shipmentMode: config.shipmentMode,
+      ...(config.shipmentMode ? { shipmentMode: config.shipmentMode } : {}),
       ...(config.fetch ? { fetch: config.fetch } : {}),
       ...(config.timeoutMs === undefined ? {} : { timeoutMs: config.timeoutMs }),
     });
@@ -262,8 +262,8 @@ export function createAfricaniesClient(config: AfricaniesClientConfig): Africani
       get: (id, signal) => request('GET', selectorPath('/product', id), undefined, signal),
     },
     shipments: {
-      getRates: async (body, signal) => { assertShipmentRequest(body, config.shipmentMode, 'rate'); return request('POST', '/shipment/rates', body, signal); },
-      purchase: async (body, signal) => { assertShipmentRequest(body, config.shipmentMode, 'purchase'); return request('POST', '/shipment/purchase', body, signal); },
+      getRates: async (body, signal) => { const mode = inferShipmentMode(body.addresses, config.shipmentMode); assertShipmentRequest(body, mode, 'rate'); return transport.request({ method: 'POST', path: '/shipment/rates', body, ...(signal ? { signal } : {}), ...(mode ? { shipmentMode: mode } : {}) }); },
+      purchase: async (body, signal) => { const mode = inferShipmentMode(body.address, config.shipmentMode); assertShipmentRequest(body, mode, 'purchase'); return transport.request({ method: 'POST', path: '/shipment/purchase', body, ...(signal ? { signal } : {}), ...(mode ? { shipmentMode: mode } : {}) }); },
       track: (trackingNumber, signal) =>
         request(
           'POST',

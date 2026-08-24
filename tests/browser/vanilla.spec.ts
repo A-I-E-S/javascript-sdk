@@ -17,8 +17,9 @@ function purchaseResult(insured: boolean, base64 = false): Record<string, unknow
   };
 }
 
-async function mockApi(page: Page, options: { authFailure?: boolean; products?: unknown[]; purchaseFailure?: boolean; purchaseApiFailure?: boolean; purchaseValidationFailure?: boolean; purchaseData?: Record<string, unknown> } = {}): Promise<ApiFixture> {
+async function mockApi(page: Page, options: { authFailure?: boolean; products?: unknown[]; ratesFailures?: number; ratesDelay?: number; purchaseFailure?: boolean; purchaseApiFailure?: boolean; purchaseValidationFailure?: boolean; purchaseData?: Record<string, unknown> } = {}): Promise<ApiFixture> {
   const fixture: ApiFixture = { purchaseCount: 0, requests: [] };
+  let remainingRateFailures=options.ratesFailures??0;
   await page.route(apiPattern, async (route) => {
     const request = route.request(); fixture.requests.push(request);
     const path = new URL(request.url()).pathname;
@@ -27,7 +28,7 @@ async function mockApi(page: Page, options: { authFailure?: boolean; products?: 
     }
     let data: unknown = [];
     if (path.includes('/product/search/')) data = options.products ?? [product];
-    if (path.endsWith('/shipment/rates')) data = [rate];
+    if (path.endsWith('/shipment/rates')) {if(options.ratesDelay)await new Promise((resolve)=>setTimeout(resolve,options.ratesDelay));if(remainingRateFailures>0){remainingRateFailures-=1;await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({success:false,status_code:503,message:'Rates temporarily unavailable',data:[]})});return;}data = [rate];}
     if (path.endsWith('/shipment/purchase')) {
       fixture.purchaseCount += 1; fixture.purchase = request.postDataJSON();
       if (options.purchaseFailure) { await route.abort('timedout'); return; }
@@ -221,6 +222,24 @@ test('automatic and manual checkout mount identical shared PayDemo structure', a
   expect(manual).toEqual(automatic);
 });
 
+test('automatic rates expose shared loading, error and refresh behavior',async({page},testInfo)=>{
+  test.skip(testInfo.project.name!=='chromium','One engine covers shared rate state behavior.');
+  await mockApi(page,{ratesFailures:1,ratesDelay:150});await login(page);await classifyAndAdd(page);await page.locator('#checkout-button').click();
+  await page.getByRole('button',{name:'Calculate packaging and rates'}).click();await expect(page.locator('#rates [role="status"]')).toContainText('Loading shipment carriers');
+  await expect(page.locator('#rates [role="status"]')).toContainText('Rates temporarily unavailable');await page.locator('#rates .shared-rate-refresh').click();
+  await expect(page.locator('#rates').getByText(rate.name)).toBeVisible();
+});
+
+test('manual rates expose the same shared loading, error and refresh behavior',async({page},testInfo)=>{
+  test.skip(testInfo.project.name!=='chromium','One engine covers shared rate state behavior.');
+  await mockApi(page,{ratesFailures:1,ratesDelay:150});await manualLogin(page);const builder=page.locator('africanies-shipment-builder');
+  for(let step=0;step<2;step+=1)await builder.getByRole('button',{name:'Continue'}).click();
+  const count=await builder.locator('[data-action="edit-item"]').count();for(let index=0;index<count;index+=1){await builder.locator('[data-action="edit-item"]').nth(index).click();const item=builder.locator('dialog .item');await item.locator('[data-product-query]').fill('head gear');await item.locator('[data-product-option]').first().click();await builder.getByRole('button',{name:'Save item'}).click();}
+  await builder.getByRole('button',{name:'Continue'}).click();await builder.getByRole('button',{name:/Create shipment/}).click();
+  await expect(page.locator('#manual-workspace [role="status"]')).toContainText('Loading shipment carriers');await expect(page.locator('#manual-workspace [role="status"]')).toContainText('Rates temporarily unavailable');
+  await page.locator('#manual-workspace .shared-rate-refresh').click();await expect(page.locator('#manual-workspace').getByText(rate.name)).toBeVisible();
+});
+
 test('manual host lab validates classification before requesting rates', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'chromium', 'One engine covers builder validation; custom-element behavior has its own matrix.');
   const fixture = await mockApi(page); await manualLogin(page); const builder = page.locator('africanies-shipment-builder');
@@ -234,6 +253,7 @@ for (const failure of ['definitive', 'uncertain'] as const) {
     test.skip(testInfo.project.name !== 'chromium', 'One engine covers purchase-state policy.');
     const fixture = await mockApi(page, failure === 'definitive' ? { purchaseValidationFailure: true } : { purchaseFailure: true }); await reachManualPayment(page);
     await page.locator('#manual-pay').click(); await expect(page.locator('#manual-error')).toContainText(failure === 'definitive' ? 'Unit weight validation failed.' : /Reconcile/);
+    await expect(page.locator('#manual-workspace .shared-payment-status')).toContainText(failure === 'definitive' ? 'Unit weight validation failed.' : /Reconcile/);
     await page.locator('#manual-pay').click();
     if (failure === 'definitive') expect(fixture.purchaseCount).toBe(2);
     else { await expect(page.locator('#manual-error')).toContainText('prior result is uncertain'); expect(fixture.purchaseCount).toBe(1); }
@@ -295,13 +315,21 @@ for (const outcome of ['pending', 'failed', 'cancelled'] as const) {
     const fixture = await mockApi(page); await login(page); await reachPayment(page);
     if (outcome === 'pending') await page.locator('#payment-outcome').evaluate((select) => select.append(new Option('Pending payment', 'pending')));
     await page.locator('#payment-outcome').selectOption(outcome); await page.locator('#pay-button').click();
-    await expect(page.locator('#app-error')).toContainText(outcome); expect(fixture.purchaseCount).toBe(0);
+    await expect(page.locator('#app-error')).toContainText(outcome); await expect(page.locator('#payment-status')).toContainText(outcome); expect(fixture.purchaseCount).toBe(0);
+  });
+}
+
+for (const outcome of ['failed','cancelled'] as const) {
+  test(`manual PayDemo ${outcome} updates the shared status without purchase`,async({page},testInfo)=>{
+    test.skip(testInfo.project.name!=='chromium','One engine covers shared decline/cancel behavior.');
+    const fixture=await mockApi(page);await reachManualPayment(page);await page.locator('#manual-payment-outcome').selectOption(outcome);await page.locator('#manual-pay').click();
+    await expect(page.locator('#manual-workspace .shared-payment-status')).toContainText(outcome);expect(fixture.purchaseCount).toBe(0);
   });
 }
 
 test('an uncertain purchase result is not automatically or manually duplicated', async ({ page }) => {
   const fixture = await mockApi(page, { purchaseFailure: true }); await login(page); await reachPayment(page); await page.locator('#pay-button').click();
-  await expect(page.locator('#app-error')).toContainText(/Network request failed|uncertain/i); await page.locator('#pay-button').click();
+  await expect(page.locator('#app-error')).toContainText(/Network request failed|uncertain/i);await expect(page.locator('#payment-status')).toContainText(/Network request failed|uncertain/i); await page.locator('#pay-button').click();
   await expect(page.locator('#app-error')).toContainText('uncertain'); expect(fixture.purchaseCount).toBe(1);
 });
 

@@ -138,13 +138,13 @@ export abstract class AfricaniesElement extends HTMLElement {
   }
 
   protected projectClientConfiguration(
-    client: { readonly environment: AfricaniesEnvironment; readonly shipmentMode: ShipmentMode } | undefined,
+    client: { readonly environment: AfricaniesEnvironment; readonly shipmentMode: ShipmentMode | undefined } | undefined,
   ): void {
     this.#projectedEnvironment = client?.environment;
     this.#projectedShipmentMode = client?.shipmentMode;
     if (client) {
       if (this.getAttribute('environment') !== client.environment) this.setAttribute('environment', client.environment);
-      if (this.getAttribute('shipment-mode') !== client.shipmentMode) this.setAttribute('shipment-mode', client.shipmentMode);
+      if (client.shipmentMode && this.getAttribute('shipment-mode') !== client.shipmentMode) this.setAttribute('shipment-mode', client.shipmentMode);
     }
     this.syncEnvironment();
     if (this.isConnected) this.render();

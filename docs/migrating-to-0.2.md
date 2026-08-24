@@ -30,7 +30,7 @@ Use the exact values together:
 The custom-element builder locks these fields. Headless requests that mix values from different modes fail validation.
 Rate-selection controllers now validate the complete request against the client's mode before making a network call. Replacing an SFN client with an STN client therefore requires replacing or rebuilding the request with the STN units and delivery flags above.
 
-When a client is assigned to a custom element, its `environment` and `shipmentMode` are authoritative. Later conflicting `environment` or `shipment-mode` attribute changes are synchronously restored to the client values. Purchase elements also discard in-flight state and suppress stale completion or error events when detached or when their request/client is replaced.
+When a client is assigned to a custom element, its `environment` and any legacy `shipmentMode` hint are projected to the element. Populated sender/receiver addresses are authoritative for shipment direction: Nigerian sender means SFN; another sender country means STN and requires a Nigerian receiver. Purchase elements also discard in-flight state and suppress stale completion or error events when detached or when their request/client is replaced.
 
 ## Pass the selected rate
 

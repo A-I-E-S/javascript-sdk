@@ -8,6 +8,7 @@ export interface TransportRequest {
   path: string;
   body?: unknown;
   signal?: AbortSignal;
+  shipmentMode?: ShipmentMode;
 }
 
 export interface AfricaniesTransport {
@@ -17,7 +18,7 @@ export interface AfricaniesTransport {
 export interface FetchTransportOptions {
   baseUrl: string;
   authorization: string;
-  shipmentMode: ShipmentMode;
+  shipmentMode?: ShipmentMode;
   fetch?: typeof globalThis.fetch;
   timeoutMs?: number;
 }
@@ -110,9 +111,10 @@ export function createFetchTransport(options: FetchTransportOptions): Africanies
       const url = `${baseUrl}${request.path.startsWith('/') ? request.path : `/${request.path}`}`;
       const headers = new Headers({
         Authorization: options.authorization,
-        'X-Shipment-Mode': options.shipmentMode,
         'Content-Type': 'application/json',
       });
+      const shipmentMode = request.shipmentMode ?? options.shipmentMode;
+      if (shipmentMode) headers.set('X-Shipment-Mode', shipmentMode);
 
       const requestSignal = createRequestSignal(request.signal, timeoutMs);
       let response: Response;

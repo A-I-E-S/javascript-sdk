@@ -5,6 +5,11 @@ export const WAREHOUSE_ADDRESS = Object.freeze({
   type: 'sender', longitude: 3.3792, latitude: 6.5244, street_number: null, street_name: null, google_address: '0',
 });
 
+export const DEMO_COUNTRIES = Object.freeze([
+  { code: 'US', name: 'United States', states: [{ code: 'MA', name: 'Massachusetts' }, { code: 'DE', name: 'Delaware' }] },
+  { code: 'NG', name: 'Nigeria', states: [{ code: 'LA', name: 'Lagos' }, { code: 'FC', name: 'Federal Capital Territory' }] },
+]);
+
 export const DEMO_PRODUCTS = Object.freeze([
   { id: 'headgear', name: 'Safty headgear', description: 'Lightweight Safty headgear', hsCode: '6506100000', price: 18500, weight: 0.8, dimensions: { length: 28, width: 24, height: 18 }, origin: 'NG' },
   { id: 'dress', name: 'Handkerchiefs made of cotton', description: 'Cotton handkerchiefs', hsCode: '6204420000', price: 32000, weight: 0.55, dimensions: { length: 32, width: 24, height: 5 }, origin: 'NG' },

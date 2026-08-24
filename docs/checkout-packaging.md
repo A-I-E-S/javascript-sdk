@@ -13,7 +13,6 @@ const packaging = calculatePackaging(cartItems, {
 
 const request = buildRateRequestFromPackaging({
   addresses,
-  shipmentMode: 'SFN',
   packaging,
   isInsured: '1',
 });

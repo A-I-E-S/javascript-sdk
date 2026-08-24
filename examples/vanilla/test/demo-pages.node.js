@@ -30,6 +30,14 @@ test('automatic and manual checkout use one shared rates and PayDemo renderer', 
   assert.match(shared,/africanies-rate-selected/);assert.match(shared,/africanies-complete/);
   assert.match(shared,/Loading shipment carriers/);assert.match(shared,/No shipping rates were returned/);
   assert.match(shared,/shared-rate-refresh/);assert.match(manual,/error:message,onRefresh:showRates/);
+  assert.match(shared,/active\?'Selected':'Select'/); assert.match(shared,/Selected shipping rate/);
+});
+
+test('automatic delivery uses dependent country and state selects', async () => {
+  const [page,main]=await Promise.all([source('index.html'),source('src/main.js')]);
+  assert.match(page,/id="receiver-country"[^>]*name="country"/); assert.match(page,/id="receiver-state"[^>]*name="state"/);
+  assert.match(main,/receiver-country.*change/); assert.match(main,/populateReceiverStates\(\)/);
+  assert.doesNotMatch(main,/shipmentMode:\s*'SFN'/);
 });
 
 test('manual entry explicitly registers SDK browser elements for production bundles', async () => {

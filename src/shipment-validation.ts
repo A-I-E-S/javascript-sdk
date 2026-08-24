@@ -8,6 +8,13 @@ export function isNigeriaCountry(value: unknown): boolean {
   return typeof value === 'string' && ['NG', 'NGA', 'NIGERIA'].includes(value.trim().toUpperCase());
 }
 
+/** Infer direction from the sender; an incomplete draft intentionally has no direction. */
+export function inferShipmentMode(addresses: AddressPairs | undefined, legacyMode?: ShipmentMode): ShipmentMode | undefined {
+  const senderCountry = addresses?.sender?.country;
+  if (typeof senderCountry !== 'string' || !senderCountry.trim()) return legacyMode;
+  return isNigeriaCountry(senderCountry) ? 'SFN' : 'STN';
+}
+
 export function shipmentGeographyIssues(shipmentMode: ShipmentMode, addresses: AddressPairs, root: 'addresses' | 'address'): ShipmentGeographyIssue[] {
   const role = shipmentMode === 'SFN' ? 'sender' : 'receiver';
   if (isNigeriaCountry(addresses?.[role]?.country)) return [];
@@ -27,25 +34,32 @@ const nonNegative = (value: unknown): value is number => typeof value === 'numbe
 
 export function shipmentRequestIssues(
   request: ShipmentRateRequest | ShipmentPurchaseRequest,
-  shipmentMode: ShipmentMode,
+  shipmentMode: ShipmentMode | undefined,
   contract: 'rate' | 'purchase',
 ): ShipmentGeographyIssue[] {
   const root = contract === 'rate' ? 'addresses' : 'address';
   const addresses = contract === 'rate'
     ? (request as ShipmentRateRequest).addresses
     : (request as ShipmentPurchaseRequest).address;
-  const issues = shipmentGeographyIssues(shipmentMode, addresses, root);
-  const expectedUnits = shipmentMode === 'SFN' ? { mass: 'KG', dimension: 'cm' } as const : { mass: 'LBS', dimension: 'inches' } as const;
-  if (request.units?.mass !== expectedUnits.mass) issues.push({ path: 'units.mass', message: `${shipmentMode} shipments require ${expectedUnits.mass}.` });
-  if (request.units?.dimension !== expectedUnits.dimension) issues.push({ path: 'units.dimension', message: `${shipmentMode} shipments require ${expectedUnits.dimension}.` });
-  if (contract === 'rate') {
+  const resolvedMode = inferShipmentMode(addresses, shipmentMode);
+  const issues: ShipmentGeographyIssue[] = [];
+  shipmentMode = resolvedMode;
+  if (shipmentMode) {
+    issues.push(...shipmentGeographyIssues(shipmentMode, addresses, root));
+    const expectedUnits = shipmentMode === 'SFN' ? { mass: 'KG', dimension: 'cm' } as const : { mass: 'LBS', dimension: 'inches' } as const;
+    if (request.units?.mass !== expectedUnits.mass) issues.push({ path: 'units.mass', message: `${shipmentMode} shipments require ${expectedUnits.mass}.` });
+    if (request.units?.dimension !== expectedUnits.dimension) issues.push({ path: 'units.dimension', message: `${shipmentMode} shipments require ${expectedUnits.dimension}.` });
+  }
+  if (contract === 'rate' && shipmentMode) {
     const rate = request as ShipmentRateRequest;
     if (rate.last_mile_delivery !== (shipmentMode === 'SFN')) issues.push({ path: 'last_mile_delivery', message: `${shipmentMode} shipment delivery preference is invalid.` });
     if (rate.pickup !== (shipmentMode === 'STN')) issues.push({ path: 'pickup', message: `${shipmentMode} shipment pickup preference is invalid.` });
-  } else {
+  } else if (contract === 'purchase') {
     const purchase = request as ShipmentPurchaseRequest;
-    const expectedCurrency = shipmentMode === 'SFN' ? 'NGN' : 'USD';
-    if (purchase.currency !== expectedCurrency) issues.push({ path: 'currency', message: `${shipmentMode} purchases require ${expectedCurrency}.` });
+    if (shipmentMode) {
+      const expectedCurrency = shipmentMode === 'SFN' ? 'NGN' : 'USD';
+      if (purchase.currency !== expectedCurrency) issues.push({ path: 'currency', message: `${shipmentMode} purchases require ${expectedCurrency}.` });
+    }
     if (typeof purchase.external_reference !== 'string' || !purchase.external_reference.trim()) issues.push({ path: 'external_reference', message: 'This field is required.' });
     if (typeof purchase.shipment_method_slug !== 'string' || !purchase.shipment_method_slug.trim()) issues.push({ path: 'shipment_method_slug', message: 'This field is required.' });
     if (purchase.file_is_url !== undefined && purchase.file_is_url !== 0 && purchase.file_is_url !== 1) issues.push({ path: 'file_is_url', message: 'Use the numeric flag 0 or 1.' });
@@ -102,7 +116,7 @@ export function shipmentRequestIssues(
 
 export function assertShipmentRequest(
   request: ShipmentRateRequest | ShipmentPurchaseRequest,
-  shipmentMode: ShipmentMode,
+  shipmentMode: ShipmentMode | undefined,
   contract: 'rate' | 'purchase',
 ): void {
   const issues = shipmentRequestIssues(request, shipmentMode, contract);

@@ -7,7 +7,6 @@ import { createAfricaniesClient } from '@africanies/shipping';
 
 const client = createAfricaniesClient({
   environment: 'test',
-  shipmentMode: 'SFN',
   auth: { encodedKey: runtimeCredential },
 });
 ```
@@ -15,6 +14,8 @@ const client = createAfricaniesClient({
 `runtimeCredential` represents a credential supplied by your application at runtime. Do not copy a secret into browser source or a Vite environment variable: values compiled into frontend JavaScript are visible to users. Runtime Base64 credentials remain the selected model for current stabilization, but the final live-browser-versus-backend/custom-transport policy is pending. Evaluate the exposure before supplying a live credential to browser code.
 
 The SDK defaults to `test`. Live traffic requires `environment: 'live'`.
+
+`shipmentMode` is optional. The SDK infers SFN from a Nigerian sender and STN from a populated non-Nigerian sender; STN then requires a Nigerian receiver. A legacy mode is only a fallback while sender country is blank and never overrides populated addresses.
 
 Custom `baseUrl` values must use HTTPS. Plain HTTP is accepted only for local development hosts: `localhost`, `127.0.0.1`, and `[::1]`.
 

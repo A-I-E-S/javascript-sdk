@@ -2,7 +2,7 @@ import * as Shipping from '@africanies/shipping/browser';
 import './styles.css';
 import { mountSharedRates, mountSharedPayDemo } from './shared-checkout-ui.js';
 import {
-  DEMO_PRODUCTS, WAREHOUSE_ADDRESS, cartLines, cartTotals, createPackagingInput,
+  DEMO_COUNTRIES, DEMO_PRODUCTS, WAREHOUSE_ADDRESS, cartLines, cartTotals, createPackagingInput,
   receiverFromForm, shippingAmount, minimumAssignedDate, payDemoResult,
 } from './demo-state.js';
 
@@ -10,6 +10,9 @@ const $ = (selector) => document.querySelector(selector);
 const money = (value, currency = 'NGN') => new Intl.NumberFormat('en-NG', { style: 'currency', currency }).format(Number(value));
 const html = (value) => String(value).replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]);
 const state = { client: null, cart: {}, classifications: {}, productSearches: {}, lines: [], packaging: null, rateRequest: null, rates: [], quote: null, selection: null, selectedRate: null, payment: null, purchaseIntent: null, externalReference: null, purchaseState: 'idle', documentUrls: [] };
+
+function populateReceiverStates(selected='') { const country=DEMO_COUNTRIES.find((entry)=>entry.code===$('#receiver-country').value); const stateSelect=$('#receiver-state'); stateSelect.innerHTML=`<option value="">Select state</option>${(country?.states??[]).map((entry)=>`<option value="${entry.code}">${html(entry.name)}</option>`).join('')}`; stateSelect.disabled=!country?.states?.length; stateSelect.value=selected; }
+function populateReceiverCountries() { const country=$('#receiver-country'); country.innerHTML=DEMO_COUNTRIES.map((entry)=>`<option value="${entry.code}">${html(entry.name)}</option>`).join(''); country.value='US'; populateReceiverStates('MA'); }
 
 function error(message = '') { const node = $('#app-error'); node.textContent = message; node.hidden = !message; if (message) node.focus(); }
 function userFacingError(cause, fallback) {
@@ -98,7 +101,7 @@ $('#login-form').addEventListener('submit', async (event) => {
   state.client = null;
   status.className = 'message'; status.textContent = 'Checking credential with Africanies sandbox…'; setBusy(button, true, 'Checking…');
   try {
-    const client = Shipping.createAfricaniesClient({ environment: 'test', shipmentMode: 'SFN', auth: { encodedKey } });
+    const client = Shipping.createAfricaniesClient({ environment: 'test', auth: { encodedKey } });
     const response = await client.carriers.list();
     if (!response?.success) throw new Error(response?.message || 'Credential check was not accepted.');
     state.client = client; $('#encoded-key').value = ''; $('#login-view').hidden = true; $('#store-view').hidden = false; $('#authenticated-actions').hidden = false; renderCatalog(); show('catalog-section');
@@ -107,6 +110,9 @@ $('#login-form').addEventListener('submit', async (event) => {
 });
 
 $('#logout-button').addEventListener('click', resetSession);
+
+$('#receiver-country').addEventListener('change',()=>populateReceiverStates());
+populateReceiverCountries();
 
 $('#checkout-button').addEventListener('click', () => show('address-section'));
 document.querySelectorAll('[data-back]').forEach((button) => button.addEventListener('click', () => show(button.dataset.back)));
@@ -120,14 +126,15 @@ $('#address-form').addEventListener('submit', async (event) => {
     state.packaging = calculatePackaging(packagingInput.items, packagingInput.settings);
     const receiver = receiverFromForm(event.currentTarget);
     state.rateRequest = Shipping.buildRateRequestFromPackaging({
-      addresses: { sender: { ...WAREHOUSE_ADDRESS }, receiver }, shipmentMode: 'SFN', packaging: state.packaging,
+      addresses: { sender: { ...WAREHOUSE_ADDRESS }, receiver }, packaging: state.packaging,
       isInsured: $('#insured').checked ? '1' : '0',
     });
+    renderPackaging();show('shipping-section');mountSharedRates($('#rates'),{loading:true});
     const response = await state.client.shipments.getRates(state.rateRequest);
     state.rates = response.data; if (!Array.isArray(state.rates) || state.rates.length === 0) throw new Error('No shipping rates were returned for this cart.');
     state.quote = Shipping.createCheckoutShippingQuote(state.rateRequest, state.packaging, state.rates);
-    renderPackaging(); renderRates(); show('shipping-section');
-  } catch (cause) { error(userFacingError(cause, 'Packaging or rates could not be calculated.')); }
+    renderRates();
+  } catch (cause) { const message=userFacingError(cause, 'Packaging or rates could not be calculated.');error(message);if(state.rateRequest){show('shipping-section');mountSharedRates($('#rates'),{error:message,onRefresh:()=>$('#address-form').requestSubmit()});} }
   finally { setBusy(button, false); }
 });
 

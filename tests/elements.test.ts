@@ -11,6 +11,7 @@ beforeAll(async () => {
 
 afterEach(() => {
   document.body.replaceChildren();
+  vi.restoreAllMocks();
 });
 
 function fakeClient(overrides: Record<string, unknown> = {}): AfricaniesClient {
@@ -71,6 +72,7 @@ describe('AfricanIES custom elements', () => {
     const element=document.createElement('africanies-shipment-builder');element.value=rateRequest();
     element.config={googlePlaces:{apiKey:'runtime-only-secret',loader}};document.body.append(element);await nextTask();
     expect(loader).toHaveBeenCalledWith('runtime-only-secret');expect(element.shadowRoot!.innerHTML).not.toContain('runtime-only-secret');
+    expect(element.shadowRoot!.querySelector<HTMLInputElement>('.address-toggle input')!.disabled).toBe(true);
     selectPlace({address:'1 Marina Road',city:'Lagos',state:'LA',country:'NG',zipCode:'100001',latitude:6.45,longitude:3.39});
     expect(element.value.addresses.sender).toMatchObject({address:'1 Marina Road',city:'Lagos',state:'LA',country:'NG',zip_code:'100001',latitude:6.45,longitude:3.39,google_address:'1'});
   });
@@ -132,7 +134,7 @@ describe('AfricanIES custom elements', () => {
     expect(element.shadowRoot?.textContent).not.toContain('Test mode');
   });
 
-  it('normalizes host-supplied locked mode and address-role fields', () => {
+  it('normalizes from populated addresses and preserves address-role fields', () => {
     const element = document.createElement('africanies-shipment-builder');
     element.setAttribute('shipment-mode', 'STN');
     const value = rateRequest();
@@ -140,7 +142,7 @@ describe('AfricanIES custom elements', () => {
     value.addresses.sender.type = '';
     value.addresses.receiver.type = '';
     element.value = value;
-    expect(element.value.units).toEqual({ dimension: 'inches', mass: 'LBS' });
+    expect(element.value.units).toEqual({ dimension: 'cm', mass: 'KG' });
     expect(element.value.addresses.sender.type).toBe('sender');
     expect(element.value.addresses.receiver.type).toBe('receiver');
   });
@@ -160,6 +162,7 @@ describe('AfricanIES custom elements', () => {
   });
 
   it('does not reuse a box index after a middle box is removed', () => {
+    vi.spyOn(window,'confirm').mockReturnValue(true);
     const element = document.createElement('africanies-shipment-builder');
     const value = rateRequest();
     value.boxes = [
@@ -174,18 +177,33 @@ describe('AfricanIES custom elements', () => {
     }
     element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="remove-box"][data-box="1"]')!.click();
     element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="add-box"]')!.click();
+    for(const field of element.shadowRoot!.querySelectorAll<HTMLInputElement>('[data-box-field]'))field.value='10',field.dispatchEvent(new Event('input',{bubbles:true}));
+    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="save-editor"]')!.click();
     expect(element.value.boxes.map((box) => box.index)).toEqual([0, 2, '3']);
   });
 
   it('uses a labelled modal for item editing and restores focus without duplicating the item', async () => {
     const element=document.createElement('africanies-shipment-builder');element.value=rateRequest();document.body.append(element);
+    const changes=vi.fn();element.addEventListener('africanies-change',changes);
     for(let step=0;step<2;step+=1)element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="next-step"]')!.click();
     const edit=element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="edit-item"]')!;edit.focus();edit.click();await nextTask();
     const dialog=element.shadowRoot!.querySelector('dialog')!;expect(dialog.hasAttribute('open')).toBe(true);expect(dialog.getAttribute('aria-labelledby')).toBe('editor-title');
     const name=dialog.querySelector<HTMLInputElement>('[data-item-field="name"]')!;name.value='Temporary';name.dispatchEvent(new Event('input',{bubbles:true}));
     dialog.querySelector<HTMLButtonElement>('[data-action="cancel-editor"]')!.click();await nextTask();
     expect(element.value.boxes[0]!.items).toHaveLength(1);expect(element.value.boxes[0]!.items[0]!.name).toBe('Phone');
+    expect(changes).not.toHaveBeenCalled();
     expect(element.shadowRoot!.activeElement).toBe(element.shadowRoot!.querySelector('[data-action="edit-item"]'));
+  });
+
+  it('keeps an invalid staged item modal open with an associated error and focused field', async () => {
+    const element=document.createElement('africanies-shipment-builder');element.value=rateRequest();document.body.append(element);for(let step=0;step<2;step+=1)element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="next-step"]')!.click();
+    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="add-item"]')!.click();const name=element.shadowRoot!.querySelector<HTMLInputElement>('[data-item-field="name"]')!;name.value='New item';name.dispatchEvent(new Event('input',{bubbles:true}));element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="save-editor"]')!.click();await nextTask();
+    expect(element.shadowRoot!.querySelector('dialog')?.open).toBe(true);const description=element.shadowRoot!.querySelector<HTMLInputElement>('[data-item-field="description"]')!;expect(description.getAttribute('aria-invalid')).toBe('true');expect(description.getAttribute('aria-describedby')).toBe('editor-error');expect(element.shadowRoot!.activeElement).toBe(description);expect(element.value.boxes[0]!.items).toHaveLength(1);
+  });
+
+  it('confirms destructive item removal and preserves stable box ownership', () => {
+    const draft=rateRequest();draft.boxes[0]!.items.push({...structuredClone(draft.boxes[0]!.items[0]!),name:'Second'});const element=document.createElement('africanies-shipment-builder');element.value=draft;document.body.append(element);for(let step=0;step<2;step+=1)element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="next-step"]')!.click();
+    const confirmation=vi.spyOn(window,'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="remove-item"][data-item="1"]')!.click();expect(element.value.boxes[0]!.items).toHaveLength(2);element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="remove-item"][data-item="1"]')!.click();expect(element.value.boxes[0]!.items).toHaveLength(1);expect(confirmation).toHaveBeenCalledTimes(2);expect(element.value.boxes[0]!.index).toBe(0);
   });
 
   it('lets a manual host add repeatable boxes with stable indexes and box-owned item assignments', () => {
@@ -199,7 +217,9 @@ describe('AfricanIES custom elements', () => {
     element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="save-editor"]')!.click();
     expect(element.value.boxes.map((box)=>box.index)).toEqual([0,'1','2']);
     element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="add-item"][data-box="1"]')!.click();
-    expect(element.value.boxes.map((box)=>box.items.length)).toEqual([1,2,1]);
+    expect(element.value.boxes.map((box)=>box.items.length)).toEqual([1,1,1]);
+    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="cancel-editor"]')!.click();
+    expect(element.value.boxes.map((box)=>box.items.length)).toEqual([1,1,1]);
     expect(element.shadowRoot!.textContent).toContain('Gross weight must include contents and tare');
   });
 
@@ -211,6 +231,7 @@ describe('AfricanIES custom elements', () => {
     const query=element.shadowRoot!.querySelector<HTMLInputElement>('[data-product-query]')!; query.value='cotton dress'; query.dispatchEvent(new Event('input',{bubbles:true})); await new Promise((resolve)=>setTimeout(resolve,400));
     expect(search).toHaveBeenCalled();
     element.shadowRoot!.querySelector<HTMLElement>('[data-product-option]')!.click();
+    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="save-editor"]')!.click();
     expect(element.value.boxes[0]!.items[0]).toMatchObject({ product_hs_code: '6204420000', product_hs_code_description: 'Cotton dresses' });
   });
 
@@ -225,7 +246,7 @@ describe('AfricanIES custom elements', () => {
     resolveSearch({ success: true, status_code: 200, message: 'ok', data: [{ id: 1, hs_code: 'STALE', name: 'Stale product', active: true, deleted_at: null, created_at: '2026-01-01', updated_at: null }] });
     await nextTask();
     expect(element.shadowRoot!.textContent).not.toContain('Stale product');
-    expect(element.value.boxes[0]!.items[0]!.product_hs_code).toBe('');
+    expect(element.value.boxes[0]!.items[0]!.product_hs_code).toBe('8517130000');
   });
 
   it('debounces product search while the user types and supplies selectable results', async () => {
@@ -239,9 +260,13 @@ describe('AfricanIES custom elements', () => {
     expect(search).toHaveBeenCalledOnce(); expect(element.shadowRoot!.querySelector<HTMLElement>('[role="listbox"]')!.textContent).toContain('Head gear');
     const refreshed = element.shadowRoot!.querySelector<HTMLInputElement>('[data-product-query]')!;
     refreshed.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="save-editor"]')!.click();
     expect(element.value.boxes[0]!.items[0]!.product_hs_code).toBe('6506100000');
+    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="edit-item"]')!.click();
     element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="clear-product"]')!.click();
-    expect(element.value.boxes[0]!.items[0]!.product_hs_code).toBe('');
+    element.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="save-editor"]')!.click();
+    expect(element.shadowRoot!.querySelector('[role="alert"]')!.textContent).toContain('Products API classification');
+    expect(element.value.boxes[0]!.items[0]!.product_hs_code).toBe('6506100000');
   });
 
   it('renders purchase validation issues instead of silently rejecting', async () => {
@@ -438,7 +463,7 @@ describe('AfricanIES custom elements', () => {
     expect(getRates).toHaveBeenCalledTimes(2);
   });
 
-  it('does not send an SFN request after the rate element client is replaced with STN', async () => {
+  it('keeps populated SFN request authoritative after a legacy STN client is assigned', async () => {
     const firstGetRates = vi.fn().mockResolvedValue({ success: true, status_code: 200, message: 'ok', data: [] });
     const stnGetRates = vi.fn();
     const element = document.createElement('africanies-rate-selection');
@@ -448,8 +473,7 @@ describe('AfricanIES custom elements', () => {
     await nextTask();
     element.client = fakeClient({ shipmentMode: 'STN', shipments: { getRates: stnGetRates } });
     await nextTask();
-    expect(stnGetRates).not.toHaveBeenCalled();
-    expect(element.shadowRoot!.textContent).toContain('invalid fields');
+    expect(stnGetRates).toHaveBeenCalledOnce();
   });
 
   it('renders numeric-string rate amounts without throwing', async () => {

@@ -1,6 +1,7 @@
 import type { AfricaniesClient } from '../client.js';
 import type { ProductHsCode, RateBoxDraft, RateItemDraft, ShipmentRateDraft, ShipmentRateDraftAddress, ShipmentUnits } from '../types.js';
 import { completeRateRequest, validateRateRequest, type ValidationIssue } from '../ui/validation.js';
+import { inferShipmentMode } from '../shipment-validation.js';
 import { AfricaniesElement, escapeHtml, sharedStyles, testModeMarkup } from './base.js';
 
 const addressFields: Array<[keyof ShipmentRateDraftAddress, string, string]> = [
@@ -105,7 +106,9 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
   #placesCleanup: Array<() => void> = [];
   #placesProvider: AfricaniesPlacesProvider | undefined;
   #placesLoading: Promise<AfricaniesPlacesProvider> | undefined;
-  #editor: { kind: 'box' | 'item'; box: number; item?: number; added: boolean; returnAction: string; original?: RateBoxDraft | RateItemDraft; error?: string } | undefined;
+  #editor: { kind: 'box'; box: number; added: boolean; returnAction: string; draft: RateBoxDraft; error?: string; errorField?: string }
+    | { kind: 'item'; box: number; item: number; added: boolean; returnAction: string; draft: RateItemDraft; error?: string; errorField?: string }
+    | undefined;
 
   get config(): AfricaniesShipmentBuilderConfig { return this.#config; }
   set config(value: AfricaniesShipmentBuilderConfig) {
@@ -120,6 +123,7 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
   set client(value: AfricaniesClient | undefined) {
     this.cancelProductSearches();
     this.#client = value;
+    if (this.#value) applyModeRules(this.#value, this.effectiveMode());
     this.projectClientConfiguration(value);
   }
 
@@ -130,22 +134,23 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
 
   override attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null): void {
     if (name === 'shipment-mode' && oldValue !== newValue && this.#value) {
-      applyModeRules(this.#value, this.shipmentMode);
+      applyModeRules(this.#value, this.effectiveMode());
     }
     super.attributeChangedCallback(name, oldValue, newValue);
   }
 
-  get value(): ShipmentRateDraft { return clone(this.#value ?? defaultValue(this.shipmentMode)); }
+  get value(): ShipmentRateDraft { return clone(this.#value ?? defaultValue(this.legacyMode() ?? 'SFN')); }
   set value(value: ShipmentRateDraft) {
     this.#value = clone(value);
-    applyModeRules(this.#value, this.shipmentMode);
+    applyModeRules(this.#value, this.effectiveMode());
+    this.#value.is_insured = this.#value.is_insured === '1' ? '1' : '0';
     this.#value.addresses.sender.type = 'sender';
     this.#value.addresses.receiver.type = 'receiver';
     if (this.isConnected) this.render();
   }
 
   protected render(): void {
-    if (!this.#value) this.#value = defaultValue(this.shipmentMode);
+    if (!this.#value) this.#value = defaultValue(this.legacyMode() ?? 'SFN');
     const value = this.#value;
     this.root.innerHTML = `
       <style>${sharedStyles}
@@ -180,7 +185,7 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
         ${this.renderWorkflow()}
         ${this.#issues.length ? `<div class="alert error" role="alert"><strong>Please review these fields</strong><ul class="issue-list">${this.#issues.slice(0, 8).map((issue) => `<li>${escapeHtml(issue.path)}: ${escapeHtml(issue.message)}</li>`).join('')}</ul></div>` : ''}
         <div class="stack" data-stage="${this.#step}">
-          ${this.shipmentMode === 'STN' && this.#step === 0 ? `<section class="card"><div class="panel-heading"><h3>Drop-off method</h3><p class="muted">Delivery behavior is determined by the ${this.shipmentMode} API contract.</p></div><div class="grid">
+          ${this.effectiveMode() === 'STN' && this.#step === 0 ? `<section class="card"><div class="panel-heading"><h3>Drop-off method</h3><p class="muted">Delivery behavior is determined by the STN API contract.</p></div><div class="grid">
             <label>Dimension unit<input value="${escapeHtml(value.units.dimension)}" readonly></label>
             <label>Mass unit<input value="${escapeHtml(value.units.mass)}" readonly></label>
             <label>Last-mile delivery<input value="${value.last_mile_delivery ? 'Enabled' : 'Disabled'}" readonly></label>
@@ -199,13 +204,13 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
   }
 
   private renderWorkflow(): string {
-    const labels = this.shipmentMode === 'SFN' ? ['Sender', 'Receiver', 'Items', 'Summary'] : ['Drop-off', 'Sender', 'Receiver', 'Items', 'Summary'];
+    const labels = this.effectiveMode() === 'STN' ? ['Drop-off', 'Sender', 'Receiver', 'Items', 'Summary'] : ['Sender', 'Receiver', 'Items', 'Summary'];
     return `<nav class="workflow" style="grid-template-columns:repeat(${labels.length},1fr)" aria-label="Shipment creation progress">${labels.map((label, index) => `<div class="workflow-step ${index < this.#step ? 'done' : index === this.#step ? 'active' : ''}" ${index === this.#step ? 'aria-current="step"' : ''}><span>${index < this.#step ? '✓' : index + 1}</span><b>${label}</b></div>`).join('')}</nav>`;
   }
 
-  private get lastStep(): number { return this.shipmentMode === 'SFN' ? 3 : 4; }
+  private get lastStep(): number { return this.effectiveMode() === 'STN' ? 4 : 3; }
   private stepIndex(step: 'sender' | 'receiver' | 'items' | 'summary'): number {
-    const offset = this.shipmentMode === 'SFN' ? 0 : 1;
+    const offset = this.effectiveMode() === 'STN' ? 1 : 0;
     return ({ sender: 0, receiver: 1, items: 2, summary: 3 } as const)[step] + offset;
   }
 
@@ -216,14 +221,14 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
   }
 
   private renderAddress(role: 'sender' | 'receiver', address: ShipmentRateDraftAddress): string {
-    const countryLocked = this.shipmentMode === 'SFN' && role === 'sender';
+    const countryLocked = inferShipmentMode(this.#value?.addresses, this.legacyMode()) === 'SFN' && role === 'sender';
     if (countryLocked && !address.country) address.country = 'NG';
     const selectedCountry = this.#countries.find((country) => country.code === address.country);
     const states = selectedCountry?.states ?? [];
     return `<section class="card"><div class="panel-heading"><h3>${role === 'sender' ? 'Sender details' : 'Receiver details'}</h3><p class="muted">Enter the contact and delivery address. Coordinates are managed internally or supplied by an optional address provider.</p></div>${this.#locationsStatus?`<p class="alert info" role="status">${escapeHtml(this.#locationsStatus)}</p>`:''}<div class="grid"><label>Country<select data-path="addresses.${role}.country" data-address="${role}" data-field="country" ${countryLocked?'disabled aria-disabled="true"':''} ${this.issueAttributes(`addresses.${role}.country`)}><option value="">Select country</option>${this.#countries.map(country=>`<option value="${escapeHtml(country.code)}" ${country.code===(countryLocked?'NG':address.country)?'selected':''}>${escapeHtml(country.name)}</option>`).join('')}</select>${countryLocked?'<input type="hidden" data-address="sender" data-field="country" value="NG">':''}${this.issueMarkup(`addresses.${role}.country`)}</label><label>State<select data-path="addresses.${role}.state" data-address="${role}" data-field="state" ${states.length?'':'disabled'} ${this.issueAttributes(`addresses.${role}.state`)}><option value="">${states.length?'Select state':'Select a country first'}</option>${states.map(state=>`<option value="${escapeHtml(state.code)}" ${state.code===address.state?'selected':''}>${escapeHtml(state.name)}</option>`).join('')}</select>${this.issueMarkup(`addresses.${role}.state`)}</label>${addressFields.map(([key, label, type]) => {
       const path = `addresses.${role}.${String(key)}`;
       return `<label>${label}<input type="${type}" data-path="${path}" data-address="${role}" data-field="${String(key)}" value="${escapeHtml(address[key])}" ${key==='address'?'data-places-input':''} ${this.issueAttributes(path)}>${this.issueMarkup(path)}</label>`;
-    }).join('')}<label class="address-toggle"><input type="checkbox" data-address="${role}" data-field="google_address" value="1" ${address.google_address==='1'?'checked':''}> Use Google address</label><p class="muted" role="status" data-places-status="${role}">${escapeHtml(this.#placesStatus || (this.#config.googlePlaces?'Google address is optional. Manual entry remains available.':'Manual address entry is active.'))}</p></div></section>`;
+    }).join('')}${this.#config.googlePlaces?.provider||this.#config.googlePlaces?.loader?`<label class="address-toggle"><input type="checkbox" disabled aria-disabled="true" ${address.google_address==='1'?'checked':''}> Google-verified address</label>`:''}<p class="muted" role="status" data-places-status="${role}">${escapeHtml(this.#placesStatus || (this.#config.googlePlaces?.provider||this.#config.googlePlaces?.loader?'Google address is optional. Select a provider suggestion to verify it.':'Manual address entry is active.'))}</p></div></section>`;
   }
 
   private renderBox(box: RateBoxDraft, boxIndex: number): string {
@@ -241,17 +246,22 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
     const resultKey = `${boxIndex}:${itemIndex}`;
     const results = this.#productResults.get(resultKey) ?? [];
     const listId = `product-list-${boxIndex}-${itemIndex}`; const active = this.#productActive.get(resultKey) ?? -1;
-    return `<div class="item"><div class="section-title"><strong>Item ${itemIndex + 1}</strong><button class="danger" type="button" data-action="remove-item" data-box="${boxIndex}" data-item="${itemIndex}" ${this.#value!.boxes[boxIndex]!.items.length === 1 ? 'disabled' : ''}>Remove</button></div><div class="grid">${fields.map(([key, label, type]) => { const path = `boxes.${boxIndex}.items.${itemIndex}.${String(key)}`; return `<label>${label}<input type="${type}" data-path="${path}" data-box="${boxIndex}" data-item="${itemIndex}" data-item-field="${String(key)}" value="${escapeHtml(item[key])}" ${this.issueAttributes(path)}>${this.issueMarkup(path)}</label>`; }).join('')}<div class="combobox"><label>Find closest product<input role="combobox" aria-autocomplete="list" aria-expanded="${this.#productOpen.has(resultKey)}" aria-controls="${listId}" ${active >= 0 ? `aria-activedescendant="${listId}-option-${active}"` : ''} data-product-query data-box="${boxIndex}" data-item="${itemIndex}" autocomplete="off" value="${escapeHtml(this.#productQueries.get(resultKey) ?? item.product_hs_code_description ?? item.name)}"></label><ul id="${listId}" class="combobox-results" role="listbox" ${this.#productOpen.has(resultKey) ? '' : 'hidden'}>${results.map((product, index) => `<li id="${listId}-option-${index}" role="option" aria-selected="${index === active}" data-product-option data-box="${boxIndex}" data-item="${itemIndex}" data-index="${index}" data-hs="${escapeHtml(product.hs_code)}" data-name="${escapeHtml(product.name)}"><strong>${escapeHtml(product.name)}</strong><small>HS ${escapeHtml(product.hs_code)}</small></li>`).join('')}</ul>${item.product_hs_code ? `<div class="selected-product"><span>${escapeHtml(item.product_hs_code_description ?? 'Selected product')} · HS ${escapeHtml(item.product_hs_code)}</span><button class="secondary" type="button" data-action="clear-product" data-box="${boxIndex}" data-item="${itemIndex}">Clear</button></div>` : ''}<p class="muted" role="status" aria-live="polite">${escapeHtml(this.#productStatus.get(resultKey) ?? 'Type at least 3 characters; search starts automatically.')}</p></div></div></div>`;
+    return `<div class="item"><div class="section-title"><strong>Item ${itemIndex + 1}</strong></div><div class="grid">${fields.map(([key, label, type]) => { const path = `boxes.${boxIndex}.items.${itemIndex}.${String(key)}`; const editorInvalid=this.#editor?.kind==='item'&&this.#editor.errorField===key; return `<label>${label}<input type="${type}" data-path="${path}" data-box="${boxIndex}" data-item="${itemIndex}" data-item-field="${String(key)}" value="${escapeHtml(item[key])}" ${editorInvalid?'aria-invalid="true" aria-describedby="editor-error"':this.issueAttributes(path)}>${this.issueMarkup(path)}</label>`; }).join('')}<div class="combobox"><label>Find closest product<input role="combobox" aria-autocomplete="list" aria-expanded="${this.#productOpen.has(resultKey)}" aria-controls="${listId}" ${active >= 0 ? `aria-activedescendant="${listId}-option-${active}"` : ''} data-product-query data-box="${boxIndex}" data-item="${itemIndex}" autocomplete="off" value="${escapeHtml(this.#productQueries.get(resultKey) ?? item.product_hs_code_description ?? item.name)}" ${this.#editor?.kind==='item'&&this.#editor.errorField==='product_hs_code'?'aria-invalid="true" aria-describedby="editor-error"':''}></label><ul id="${listId}" class="combobox-results" role="listbox" ${this.#productOpen.has(resultKey) ? '' : 'hidden'}>${results.map((product, index) => `<li id="${listId}-option-${index}" role="option" aria-selected="${index === active}" data-product-option data-box="${boxIndex}" data-item="${itemIndex}" data-index="${index}" data-hs="${escapeHtml(product.hs_code)}" data-name="${escapeHtml(product.name)}"><strong>${escapeHtml(product.name)}</strong><small>HS ${escapeHtml(product.hs_code)}</small></li>`).join('')}</ul>${item.product_hs_code ? `<div class="selected-product"><span>${escapeHtml(item.product_hs_code_description ?? 'Selected product')} · HS ${escapeHtml(item.product_hs_code)}</span><button class="secondary" type="button" data-action="clear-product" data-box="${boxIndex}" data-item="${itemIndex}">Clear</button></div>` : ''}<p class="muted" role="status" aria-live="polite">${escapeHtml(this.#productStatus.get(resultKey) ?? 'Type at least 3 characters; search starts automatically.')}</p></div></div></div>`;
   }
 
   private renderEditor(): string {
     const editor=this.#editor;if(!editor)return '';
     if(editor.kind==='box'){
-      const box=this.#value!.boxes[editor.box]!;
-      return `<dialog aria-labelledby="editor-title" aria-describedby="editor-description"><section class="card stack"><div class="section-title"><div><h3 id="editor-title">${editor.added?'Add':'Edit'} box</h3><p id="editor-description" class="muted">Enter package dimensions and gross weight.</p></div><button type="button" class="secondary" data-action="cancel-editor" aria-label="Close editor">×</button></div>${editor.error?`<p class="alert error" role="alert">${escapeHtml(editor.error)}</p>`:''}<div class="grid">${(['length','width','height','weight'] as const).map(key=>`<label>${key==='weight'?'Gross weight':key[0]!.toUpperCase()+key.slice(1)}<input data-editor-initial="${key==='length'}" inputmode="decimal" data-box="${editor.box}" data-box-field="${key}" value="${escapeHtml(box[key])}"></label>`).join('')}</div><div class="actions"><button type="button" class="secondary" data-action="cancel-editor">Cancel</button><button type="button" class="primary" data-action="save-editor">Save box</button></div></section></dialog>`;
+      const box=editor.draft;
+      return `<dialog aria-labelledby="editor-title" aria-describedby="editor-description"><section class="card stack"><div class="section-title"><div><h3 id="editor-title">${editor.added?'Add':'Edit'} box</h3><p id="editor-description" class="muted">Enter package dimensions and gross weight.</p></div><button type="button" class="secondary" data-action="cancel-editor" aria-label="Close editor">×</button></div>${editor.error?`<p id="editor-error" class="alert error" role="alert">${escapeHtml(editor.error)}</p>`:''}<div class="grid">${(['length','width','height','weight'] as const).map(key=>`<label>${key==='weight'?'Gross weight':key[0]!.toUpperCase()+key.slice(1)}<input data-editor-initial="${key==='length'}" inputmode="decimal" data-box="${editor.box}" data-box-field="${key}" value="${escapeHtml(box[key])}" ${editor.errorField===key?'aria-invalid="true" aria-describedby="editor-error"':''}></label>`).join('')}</div><div class="actions"><button type="button" class="secondary" data-action="cancel-editor">Cancel</button><button type="button" class="primary" data-action="save-editor">Save box</button></div></section></dialog>`;
     }
-    const itemIndex=editor.item!;const item=this.#value!.boxes[editor.box]!.items[itemIndex]!;
-    return `<dialog aria-labelledby="editor-title" aria-describedby="editor-description"><section class="card stack"><div class="section-title"><div><h3 id="editor-title">${editor.added?'Add':'Edit'} item</h3><p id="editor-description" class="muted">Use an everyday name and select the closest Products API classification.</p></div><button type="button" class="secondary" data-action="cancel-editor" aria-label="Close editor">×</button></div>${editor.error?`<p class="alert error" role="alert">${escapeHtml(editor.error)}</p>`:''}${this.renderItem(item,editor.box,itemIndex)}<div class="actions"><button type="button" class="secondary" data-action="cancel-editor">Cancel</button><button type="button" class="primary" data-action="save-editor">Save item</button></div></section></dialog>`;
+    const itemIndex=editor.item;const item=editor.draft;
+    return `<dialog aria-labelledby="editor-title" aria-describedby="editor-description"><section class="card stack"><div class="section-title"><div><h3 id="editor-title">${editor.added?'Add':'Edit'} item</h3><p id="editor-description" class="muted">Use an everyday name and select the closest Products API classification.</p></div><button type="button" class="secondary" data-action="cancel-editor" aria-label="Close editor">×</button></div>${editor.error?`<p id="editor-error" class="alert error" role="alert">${escapeHtml(editor.error)}</p>`:''}${this.renderItem(item,editor.box,itemIndex)}<div class="actions"><button type="button" class="secondary" data-action="cancel-editor">Cancel</button><button type="button" class="primary" data-action="save-editor">Save item</button></div></section></dialog>`;
+  }
+
+  private itemFor(boxIndex:number,itemIndex:number):RateItemDraft {
+    return this.#editor?.kind==='item'&&this.#editor.box===boxIndex&&this.#editor.item===itemIndex
+      ? this.#editor.draft : this.#value!.boxes[boxIndex]!.items[itemIndex]!;
   }
 
   private bind(): void {
@@ -266,7 +276,7 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
     form.querySelectorAll<HTMLButtonElement>('[data-action="search-product"]').forEach((button) => button.addEventListener('click', () => void this.searchProducts(Number(button.dataset.box), Number(button.dataset.item))));
     form.addEventListener('submit', (event) => {
       event.preventDefault();
-      const result = validateRateRequest(this.#value!, this.shipmentMode);
+      const result = validateRateRequest(this.#value!, this.legacyMode());
       this.#issues = result.issues;
       if (!result.valid) {
         const firstPath = result.issues[0]?.path ?? '';
@@ -294,9 +304,8 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
       const boxIndex = Number(input.dataset.box); const itemIndex = Number(input.dataset.item); const key = `${boxIndex}:${itemIndex}`;
       this.#productQueries.set(key, input.value); this.#productSearches.get(key)?.controller.abort(); this.#productSearches.delete(key);
       const pending = this.#productDebounces.get(key); if (pending !== undefined) clearTimeout(pending);
-      const item = this.#value!.boxes[boxIndex]!.items[itemIndex]!; item.product_hs_code = ''; delete item.product_hs_code_description; this.#productResults.delete(key);
+      const item = this.itemFor(boxIndex,itemIndex); item.product_hs_code = ''; delete item.product_hs_code_description; this.#productResults.delete(key);
       this.#productOpen.delete(key); this.#productActive.delete(key); input.setAttribute('aria-expanded','false'); input.removeAttribute('aria-activedescendant'); const combobox=input.closest('.combobox'); combobox?.querySelector('.selected-product')?.remove(); combobox?.querySelector<HTMLElement>('[role="listbox"]')?.setAttribute('hidden','');
-      this.emit('africanies-change', clone(this.#value!));
       if (input.value.trim().length < 3) { this.#productStatus.set(key, 'Type at least 3 characters to search.'); this.#productDebounces.delete(key); return; }
       this.#productStatus.set(key, 'Waiting to search…');
       this.#productDebounces.set(key, window.setTimeout(() => { this.#productDebounces.delete(key); void this.searchProducts(boxIndex, itemIndex); }, 350));
@@ -306,14 +315,12 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
     const role = input.dataset.address as 'sender' | 'receiver' | undefined;
     if (role && field) {
       const address = this.#value!.addresses[role] as unknown as Record<string, unknown>;
-      if (field === 'google_address') {
-        address[field] = input instanceof HTMLInputElement && input.checked ? '1' : '0';
-        if (address[field] === '0' && !this.#config.retainCoordinatesOnManualEdit) { address.longitude = null; address.latitude = null; }
-      } else {
+      {
         address[field] = input.value;
         if (field === 'country') {
           address.state = '';
-          if (this.shipmentMode === 'SFN' && role === 'sender') address.country = 'NG';
+          const mode = inferShipmentMode(this.#value!.addresses, this.legacyMode());
+          if (mode) applyModeRules(this.#value!, mode);
           this.render();
         } else if (address.google_address === '1') {
           address.google_address = '0';
@@ -324,19 +331,28 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
     if (!role && field === 'is_insured') this.#value!.is_insured = input.value as '0' | '1';
     const boxIndex = Number(input.dataset.box);
     if (Number.isInteger(boxIndex) && input.dataset.boxField) {
-      (this.#value!.boxes[boxIndex] as unknown as Record<string, unknown>)[input.dataset.boxField] = input.value;
+      const box=this.#editor?.kind==='box'&&this.#editor.box===boxIndex?this.#editor.draft:this.#value!.boxes[boxIndex]!;
+      (box as unknown as Record<string, unknown>)[input.dataset.boxField] = input.value;
     }
     const itemIndex = Number(input.dataset.item);
     if (Number.isInteger(boxIndex) && Number.isInteger(itemIndex) && input.dataset.itemField) {
       const key = input.dataset.itemField;
-      const item = this.#value!.boxes[boxIndex]!.items[itemIndex] as unknown as Record<string, unknown>;
+      const item = this.itemFor(boxIndex,itemIndex) as unknown as Record<string, unknown>;
       if ((key === 'price' || key === 'product_hs_code_description') && input.value.trim() === '') {
         delete item[key];
       } else {
         item[key] = input.type === 'number' ? Number(input.value) : input.value;
       }
     }
-    this.emit('africanies-change', clone(this.#value!));
+    if (!this.#editor) this.emit('africanies-change', clone(this.#value!));
+  }
+
+  private legacyMode(): 'SFN' | 'STN' | undefined {
+    return this.#client?.shipmentMode ?? (this.hasAttribute('shipment-mode') ? this.shipmentMode : undefined);
+  }
+
+  private effectiveMode(): 'SFN' | 'STN' {
+    return inferShipmentMode(this.#value?.addresses, this.legacyMode()) ?? 'SFN';
   }
 
   private async loadCountries(loader: () => Promise<AfricaniesCountryOption[]>): Promise<void> {
@@ -396,7 +412,7 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
     if (!this.#client) return;
     const client = this.#client;
     const query = (this.#productQueries.get(`${boxIndex}:${itemIndex}`) ?? this.root.querySelector<HTMLInputElement>(`[data-product-query][data-box="${boxIndex}"][data-item="${itemIndex}"]`)?.value ?? '').trim();
-    const key = `${boxIndex}:${itemIndex}`; const item = this.#value!.boxes[boxIndex]!.items[itemIndex]!;
+    const key = `${boxIndex}:${itemIndex}`; const item = this.itemFor(boxIndex,itemIndex);
     const pending = this.#productDebounces.get(key); if (pending !== undefined) clearTimeout(pending); this.#productDebounces.delete(key);
     this.#productSearches.get(key)?.controller.abort();
     const search = { version: (this.#productSearches.get(key)?.version ?? 0) + 1, controller: new AbortController() };
@@ -441,18 +457,17 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
     if (button.dataset.action === 'add-box') {
       const indexes = this.#value!.boxes.map((box) => Number(box.index)).filter(Number.isFinite);
       const nextIndex = indexes.length === 0 ? 0 : Math.max(...indexes) + 1;
-      this.#value!.boxes.push(emptyBox(nextIndex));
-      this.#editor={kind:'box',box:this.#value!.boxes.length-1,added:true,returnAction:'add-box'};this.render();return;
+      this.#editor={kind:'box',box:this.#value!.boxes.length,added:true,returnAction:'add-box',draft:emptyBox(nextIndex)};this.render();return;
     }
-    if(button.dataset.action==='edit-box'){this.#editor={kind:'box',box:boxIndex,added:false,returnAction:`edit-box:${boxIndex}`,original:clone(this.#value!.boxes[boxIndex]!)};this.render();return;}
-    if (button.dataset.action === 'remove-box' && this.#value!.boxes.length > 1) { this.#value!.boxes.splice(boxIndex, 1); this.clearProductInteractionState(); changed = true; }
-    if (button.dataset.action === 'add-item') { this.#value!.boxes[boxIndex]!.items.push(emptyItem());this.#editor={kind:'item',box:boxIndex,item:this.#value!.boxes[boxIndex]!.items.length-1,added:true,returnAction:`add-item:${boxIndex}`};this.render();return; }
-    if(button.dataset.action==='edit-item'){const item=Number(button.dataset.item);this.#editor={kind:'item',box:boxIndex,item,added:false,returnAction:`edit-item:${boxIndex}:${button.dataset.item}`,original:clone(this.#value!.boxes[boxIndex]!.items[item]!)};this.render();return;}
-    if (button.dataset.action === 'remove-item' && this.#value!.boxes[boxIndex]!.items.length > 1) { this.#value!.boxes[boxIndex]!.items.splice(Number(button.dataset.item), 1); this.clearProductInteractionState(); changed = true; }
+    if(button.dataset.action==='edit-box'){this.#editor={kind:'box',box:boxIndex,added:false,returnAction:`edit-box:${boxIndex}`,draft:clone(this.#value!.boxes[boxIndex]!)};this.render();return;}
+    if (button.dataset.action === 'remove-box' && this.#value!.boxes.length > 1) { if(!window.confirm(`Remove Box ${boxIndex+1} and all assigned items?`))return;this.#value!.boxes.splice(boxIndex, 1); this.clearProductInteractionState(); changed = true; }
+    if (button.dataset.action === 'add-item') { const item=this.#value!.boxes[boxIndex]!.items.length;this.#editor={kind:'item',box:boxIndex,item,added:true,returnAction:`add-item:${boxIndex}`,draft:emptyItem()};this.render();return; }
+    if(button.dataset.action==='edit-item'){const item=Number(button.dataset.item);this.#editor={kind:'item',box:boxIndex,item,added:false,returnAction:`edit-item:${boxIndex}:${button.dataset.item}`,draft:clone(this.#value!.boxes[boxIndex]!.items[item]!)};this.render();return;}
+    if (button.dataset.action === 'remove-item' && this.#value!.boxes[boxIndex]!.items.length > 1) { const item=Number(button.dataset.item);if(!window.confirm(`Delete ${this.#value!.boxes[boxIndex]!.items[item]!.name||`Item ${item+1}`}?`))return;this.#value!.boxes[boxIndex]!.items.splice(item, 1); this.clearProductInteractionState(); changed = true; }
     if(button.dataset.action==='cancel-editor'){this.closeEditor(false);return;}
     if(button.dataset.action==='save-editor'){this.closeEditor(true);return;}
     if(button.dataset.action==='edit-step'){this.#step=Number(button.dataset.step);this.render();return;}
-    if (button.dataset.action === 'clear-product') { const itemIndex=Number(button.dataset.item); const key=`${boxIndex}:${itemIndex}`; this.#productSearches.get(key)?.controller.abort(); this.#productSearches.delete(key); const pending=this.#productDebounces.get(key); if(pending!==undefined)clearTimeout(pending); this.#productDebounces.delete(key); const item=this.#value!.boxes[boxIndex]!.items[itemIndex]!; item.product_hs_code=''; delete item.product_hs_code_description; this.#productQueries.set(key,''); this.#productResults.delete(key); this.#productOpen.delete(key); this.#productActive.delete(key); changed=true; }
+    if (button.dataset.action === 'clear-product') { const itemIndex=Number(button.dataset.item); const key=`${boxIndex}:${itemIndex}`; this.#productSearches.get(key)?.controller.abort(); this.#productSearches.delete(key); const pending=this.#productDebounces.get(key); if(pending!==undefined)clearTimeout(pending); this.#productDebounces.delete(key); const item=this.itemFor(boxIndex,itemIndex); item.product_hs_code=''; delete item.product_hs_code_description; this.#productQueries.set(key,''); this.#productResults.delete(key); this.#productOpen.delete(key); this.#productActive.delete(key); changed=true; }
     if (!changed) return;
     this.render();
     this.emit('africanies-change', clone(this.#value!));
@@ -460,19 +475,37 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
 
   private closeEditor(save:boolean):void {
     const editor=this.#editor;if(!editor)return;
-    if(!save){if(editor.added){if(editor.kind==='box')this.#value!.boxes.splice(editor.box,1);else this.#value!.boxes[editor.box]!.items.splice(editor.item!,1);}else if(editor.original){if(editor.kind==='box')this.#value!.boxes[editor.box]=clone(editor.original as RateBoxDraft);else this.#value!.boxes[editor.box]!.items[editor.item!]=clone(editor.original as RateItemDraft);}}
     if(save){
-      const invalid=editor.kind==='box'
-        ? (['length','width','height','weight'] as const).some(key=>!(Number(this.#value!.boxes[editor.box]![key])>0))
-        : !this.#value!.boxes[editor.box]!.items[editor.item!]!.name.trim();
-      if(invalid){editor.error=editor.kind==='box'?'All box measurements must be greater than zero.':'Item name is required.';this.render();return;}
+      const error=editor.kind==='box'?this.validateBoxEditor(editor.draft):this.validateItemEditor(editor.draft);
+      if(error){editor.error=error.message;editor.errorField=error.field;this.render();queueMicrotask(()=>this.root.querySelector<HTMLElement>(editor.kind==='box'?`[data-box-field="${error.field}"]`:error.field==='product_hs_code'?'[data-product-query]':`[data-item-field="${error.field}"]`)?.focus());return;}
+      if(editor.kind==='box'){if(editor.added)this.#value!.boxes.push(clone(editor.draft));else this.#value!.boxes[editor.box]=clone(editor.draft);}
+      else {if(editor.added)this.#value!.boxes[editor.box]!.items.push(clone(editor.draft));else this.#value!.boxes[editor.box]!.items[editor.item]=clone(editor.draft);}
       this.emit('africanies-change',clone(this.#value!));
     }
     const returnAction=editor.returnAction;this.#editor=undefined;this.render();
     queueMicrotask(()=>{const [action,box,item]=returnAction.split(':');this.root.querySelector<HTMLButtonElement>(`[data-action="${action}"]${box?`[data-box="${box}"]`:''}${item?`[data-item="${item}"]`:''}`)?.focus();});
   }
 
-  private selectProduct(boxIndex:number,itemIndex:number,index:number):void { const key=`${boxIndex}:${itemIndex}`; const product=this.#productResults.get(key)?.[index]; if(!product)return; const item=this.#value!.boxes[boxIndex]!.items[itemIndex]!; item.product_hs_code=product.hs_code; item.product_hs_code_description=product.name; this.#productQueries.set(key,product.name); this.#productOpen.delete(key); this.#productStatus.set(key,`${product.name} · HS ${product.hs_code}`); this.emit('africanies-change',clone(this.#value!)); this.render(); }
+  private validateBoxEditor(box:RateBoxDraft):{message:string;field:string}|undefined {
+    const invalid=(['length','width','height','weight'] as const).find(key=>!(Number(box[key])>0));if(invalid)return {message:'Length, width, height, and gross weight must all be greater than zero.',field:invalid};
+    const contents=box.items.reduce((sum,item)=>sum+Number(item.quantity||0)*Number(item.weight||0),0);
+    if(Number(box.weight)+1e-9<contents)return {message:`Gross weight must be at least ${contents} ${this.#value!.units.mass}.`,field:'weight'};
+    return undefined;
+  }
+
+  private validateItemEditor(item:RateItemDraft):{message:string;field:string}|undefined {
+    if(!item.name.trim())return {message:'Item name is required.',field:'name'};
+    if(!item.description.trim())return {message:'Description is required.',field:'description'};
+    if(!item.product_hs_code.trim())return {message:'Select a Products API classification.',field:'product_hs_code'};
+    if(!item.country.trim())return {message:'Country of origin is required.',field:'country'};
+    if(!(Number(item.quantity)>0))return {message:'Quantity must be greater than zero.',field:'quantity'};
+    if(!(Number(item.weight)>0))return {message:'Unit weight must be greater than zero.',field:'weight'};
+    if(!(Number(item.unit_price)>0))return {message:'Unit price must be greater than zero.',field:'unit_price'};
+    if(!(Number(item.amount)>0))return {message:'Amount must be greater than zero.',field:'amount'};
+    return undefined;
+  }
+
+  private selectProduct(boxIndex:number,itemIndex:number,index:number):void { const key=`${boxIndex}:${itemIndex}`; const product=this.#productResults.get(key)?.[index]; if(!product)return; const item=this.itemFor(boxIndex,itemIndex); item.product_hs_code=product.hs_code; item.product_hs_code_description=product.name; this.#productQueries.set(key,product.name); this.#productOpen.delete(key); this.#productStatus.set(key,`${product.name} · HS ${product.hs_code}`); if(!this.#editor)this.emit('africanies-change',clone(this.#value!)); this.render(); }
 
   private handleProductKeydown(event:KeyboardEvent):void { const input=(event.target as Element).closest<HTMLInputElement>('[data-product-query]'); if(!input)return; const box=Number(input.dataset.box), item=Number(input.dataset.item), key=`${box}:${item}`; const results=this.#productResults.get(key)??[]; if(event.key==='Escape'){this.#productOpen.delete(key);input.setAttribute('aria-expanded','false');input.removeAttribute('aria-activedescendant');this.root.querySelector<HTMLElement>(`#product-list-${box}-${item}`)?.setAttribute('hidden','');return;} if(!results.length)return; let active=this.#productActive.get(key)??0; if(event.key==='ArrowDown'){event.preventDefault();active=(active+1)%results.length;} else if(event.key==='ArrowUp'){event.preventDefault();active=(active-1+results.length)%results.length;} else if(event.key==='Enter'&&this.#productOpen.has(key)){event.preventDefault();this.selectProduct(box,item,active);return;} else return; this.#productActive.set(key,active);this.#productOpen.add(key);this.render();this.root.querySelector<HTMLInputElement>(`[data-product-query][data-box="${box}"][data-item="${item}"]`)?.focus(); }
 

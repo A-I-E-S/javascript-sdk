@@ -16,15 +16,11 @@ function shipmentRate(overrides: Partial<ShipmentRate> = {}): ShipmentRate {
 }
 
 describe('UI contracts', () => {
-  it('enforces mode-specific units', () => {
+  it('uses populated sender addresses instead of a conflicting legacy mode', () => {
     const request: ShipmentRateDraft = rateRequest();
     expect(validateRateRequest(request, 'SFN').valid).toBe(true);
     const result = validateRateRequest(request, 'STN');
-    expect(result.valid).toBe(false);
-    expect(result.issues.map((issue) => issue.path)).toContain('units.mass');
-    expect(result.issues.map((issue) => issue.path)).toEqual(expect.arrayContaining([
-      'last_mile_delivery', 'pickup',
-    ]));
+    expect(result.valid).toBe(true);
   });
 
   it('accepts the exact STN unit and pickup contract', () => {
@@ -32,6 +28,7 @@ describe('UI contracts', () => {
     request.units = { mass: 'LBS', dimension: 'inches' };
     request.last_mile_delivery = false;
     request.pickup = true;
+    request.addresses.sender.country = 'US';
     request.addresses.receiver.country = 'Nigeria';
     expect(validateRateRequest(request, 'STN')).toEqual({ valid: true, issues: [] });
   });
@@ -100,6 +97,7 @@ describe('UI contracts', () => {
     request.units = { mass: 'LBS', dimension: 'inches' };
     request.last_mile_delivery = false;
     request.pickup = true;
+    request.addresses.sender.country = 'US';
     request.addresses.receiver.country = 'NG';
     const rate = shipmentRate({
       slug: 'africanies_air_express_stn',
@@ -118,11 +116,12 @@ describe('UI contracts', () => {
     }
   });
 
-  it('enforces SFN sender and STN receiver geography before rates and purchase', () => {
+  it('infers STN and enforces its Nigerian receiver invariant', () => {
     const rate = rateRequest();
     rate.addresses.sender.country = 'US';
-    expect(validateRateRequest(rate, 'SFN').issues).toContainEqual(expect.objectContaining({ path: 'addresses.sender.country' }));
+    expect(validateRateRequest(rate, 'SFN').issues).toContainEqual(expect.objectContaining({ path: 'addresses.receiver.country' }));
     const purchase = purchaseRequest();
+    purchase.address.sender.country = 'US';
     purchase.address.receiver.country = 'US';
     expect(validatePurchaseRequest(purchase, 'STN', new Date(2026, 7, 18)).issues).toContainEqual(expect.objectContaining({ path: 'address.receiver.country' }));
   });
@@ -270,17 +269,13 @@ describe('UI contracts', () => {
     expect(controller.state.rates[0]?.slug).toBe('new');
   });
 
-  it('rejects a rate request that conflicts with the client mode before transport', async () => {
+  it('lets request addresses override a conflicting client mode', async () => {
     const getRates = vi.fn();
     const client = { shipmentMode: 'STN', shipments: { getRates } } as unknown as AfricaniesClient;
     const controller = new RateSelectionController(client, rateRequest());
-    await expect(controller.load()).rejects.toMatchObject({
-      category: 'validation',
-      data: expect.arrayContaining([expect.objectContaining({ path: 'units.mass' })]),
-    });
-    expect(getRates).not.toHaveBeenCalled();
-    expect(controller.state).toMatchObject({ status: 'error', rates: [], selectedSlug: null });
-    expect(controller.state.error).toMatchObject({ category: 'validation' });
+    getRates.mockResolvedValue({ success: true, status_code: 200, message: 'ok', data: [] });
+    await expect(controller.load()).resolves.toEqual([]);
+    expect(getRates).toHaveBeenCalledOnce();
   });
 
   it('does not let an old cancelled purchase clear a newer in-flight submission', async () => {

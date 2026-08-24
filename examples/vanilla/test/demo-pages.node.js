@@ -43,8 +43,8 @@ test('product classification supports debounced typed search and cancellation', 
 test('manual lab restores useful historical defaults without a hardcoded HS code', async () => {
   const manual = await source('src/manual.js');
   assert.match(manual, /length:'10',width:'10',height:'10',weight:'5'/);
-  assert.match(manual, /name:'Electronics Accessories'.*weight:'1\.5'.*unit_price:1500/);
-  assert.match(manual, /name:'Smartphone Case'.*weight:'0\.3'.*unit_price:1500/);
+  assert.match(manual, /name:'Head phones'.*weight:'1\.5'.*unit_price:1500/);
+  assert.match(manual, /name:'Airpod'.*weight:'0\.3'.*unit_price:1500/);
   assert.match(manual, /product_hs_code:''/);
 });
 

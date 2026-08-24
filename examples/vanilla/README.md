@@ -22,7 +22,7 @@ The credential is held in page memory only and cleared from the input after ever
 
 Both pages validate their own in-memory sandbox credential and provide Logout. They link to each other and are emitted as separate entries in the same GitHub Pages artifact.
 
-The manual lab starts with the useful `0.2.0` UAT fixture: John Doe's Isolo/Lagos sender, Jane Smith's Boston receiver, one 10 × 10 × 10 cm box with 5 kg gross weight, and two quantity-one lines—Electronics Accessories at 1.5 kg/NGN 1,500 and Smartphone Case at 0.3 kg/NGN 1,500. The old fixture's hardcoded HS value is intentionally omitted: each item must be classified through the live searchable Products API combobox. Testers may add or remove boxes and items without an SDK-imposed demo limit; each item lives in exactly one box, box indexes remain stable, and the SDK validates dimensions, quantities, unit weights, values, and gross box weight before rates.
+The manual lab starts with the useful `0.2.0` UAT fixture: John Doe's Isolo/Lagos sender, Jane Smith's Boston receiver, one 10 × 10 × 10 cm box with 5 kg gross weight, and two quantity-one lines—Head phones at 1.5 kg/NGN 1,500 and Airpod at 0.3 kg/NGN 1,500. The old fixture's hardcoded HS value is intentionally omitted: each item must be classified through the live searchable Products API combobox. Testers may add or remove boxes and items without an SDK-imposed demo limit; each item lives in exactly one box, box indexes remain stable, and the SDK validates dimensions, quantities, unit weights, values, and gross box weight before rates.
 
 ## Consumer integration choices
 

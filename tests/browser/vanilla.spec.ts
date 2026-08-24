@@ -153,6 +153,16 @@ test('catalog renders the approved product display names', async ({ page }) => {
   await expect(catalog.getByRole('heading', { name: 'Handbags', exact: true })).toBeVisible();
 });
 
+test('manual builder renders the approved preset item names', async ({ page }) => {
+  await mockApi(page); await manualLogin(page);
+  const builder = page.locator('africanies-shipment-builder');
+  for (let step = 0; step < 3; step += 1) await builder.getByRole('button', { name: 'Continue' }).click();
+  const names = builder.locator('[data-item-field="name"]');
+  await expect(names).toHaveCount(2);
+  await expect(names.nth(0)).toHaveValue('Head phones');
+  await expect(names.nth(1)).toHaveValue('Airpod');
+});
+
 test('typed HS search debounces, cancels stale work, and supports keyboard classification', async ({ page }) => {
   const searchUrls: string[] = [];
   await page.route(apiPattern, async (route) => {

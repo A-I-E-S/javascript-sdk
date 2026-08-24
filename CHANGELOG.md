@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1 — 2026-08-24
+
+Documentation-only patch release correcting stale npm publication status and prominently linking the canonical [automatic UAT demo](https://a-i-e-s.github.io/javascript-sdk/) and [manual packaging lab](https://a-i-e-s.github.io/javascript-sdk/manual.html). No SDK behavior, API contract, or runtime dependency changed.
+
 ## 0.4.0 — 2026-08-24
 
 Release candidate for the additive checkout, automatic-packaging, SDK validation, UI-parity, browser-recovery, Tailwind UI build, and hosted vanilla UAT work. Package metadata now identifies `0.4.0`; publication remains a separate post-merge action and is not performed by this release-preparation change.

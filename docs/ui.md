@@ -1,5 +1,7 @@
 # AfricanIES Shipping UI
 
+See the UI in the canonical sandbox-only [automatic UAT demo](https://a-i-e-s.github.io/javascript-sdk/) or compare the [host-controlled manual packaging lab](https://a-i-e-s.github.io/javascript-sdk/manual.html). Both accept a tester-provided sandbox Base64 credential at runtime; no credential is shipped with the pages.
+
 The package provides three independently mountable native custom elements:
 
 - `<africanies-shipment-builder>`

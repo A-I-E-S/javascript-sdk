@@ -192,7 +192,7 @@ test('built Pages artifact loads at the repository base without asset or console
   page.on('requestfailed', (request) => failures.push(`${request.method()} ${request.url()}`));
   page.on('response', (response) => { if (response.status() >= 400) failures.push(`${response.status()} ${response.url()}`); });
   page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
-  await page.goto('http://127.0.0.1:4175/javascript-sdk/', { waitUntil: 'networkidle' });
+  await page.goto('http://127.0.0.1:4175/', { waitUntil: 'networkidle' });
   await expect(page).toHaveTitle(/Africanies Store/); await expect(page.locator('.test-badge')).toContainText('SANDBOX · SFN');
   await expect(page.locator('#encoded-key')).toBeVisible(); expect(failures).toEqual([]); expect(consoleErrors).toEqual([]);
 });

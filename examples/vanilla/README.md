@@ -31,7 +31,7 @@ npm test
 npm run build
 ```
 
-The production build is static and the deployment workflow supplies the `/javascript-sdk/` GitHub Pages project base. The deployed origin must be allowed by the Africanies sandbox CORS policy. Do not build a public artifact with `VITE_AFRICANIES_ENCODED_KEY` or any credential embedded in its environment.
+The production build is static. The deployment workflow reads the configured GitHub Pages base path from `actions/configure-pages`, so unique-domain sites build at `/` while project sites retain their repository subpath. The deployed origin must be allowed by the Africanies sandbox CORS policy. Do not build a public artifact with `VITE_AFRICANIES_ENCODED_KEY` or any credential embedded in its environment.
 
 The demo keeps one external reference and immutable purchase intent for an attempted order. A definitive validation or rejected API response can be corrected safely. If network delivery is uncertain, or the API response could follow an accepted request, the demo blocks automatic retry and directs the tester to reconcile that reference rather than risking a duplicate shipment.
 

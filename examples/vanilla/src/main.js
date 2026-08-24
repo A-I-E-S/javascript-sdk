@@ -31,7 +31,7 @@ function resetSession() {
   state.documentUrls.forEach((url) => URL.revokeObjectURL(url)); state.documentUrls = [];
   $('#encoded-key').value = ''; $('#login-status').textContent = ''; $('#login-status').className = 'message';
   $('#address-form').reset(); $('#cart-count').textContent = '0'; $('#authenticated-actions').hidden = true;
-  $('#store-view').hidden = true; $('#login-view').hidden = false; error(); renderCatalog(); $('#encoded-key').focus();
+  $('#store-view').hidden = true; $('#login-view').hidden = false; error(); renderCatalog(); updateCheckoutState(); $('#encoded-key').focus();
 }
 
 function renderCatalog() {
@@ -72,7 +72,10 @@ function scheduleProductSearch(productId) {
   select.hidden = true; select.replaceChildren();
   if (query.length < 3) { status.textContent = 'Type at least 3 characters to search.'; return; }
   status.textContent = 'Waiting to search…';
-  const timer = setTimeout(() => void startProductSearch(productId), 350); state.productSearches[productId] = { timer };
+  const timer = setTimeout(() => {
+    if (state.productSearches[productId]?.timer !== timer) return;
+    delete state.productSearches[productId]; void startProductSearch(productId);
+  }, 350); state.productSearches[productId] = { timer };
 }
 
 async function startProductSearch(productId, button = $(`button[data-product="${productId}"].search-product`)) {

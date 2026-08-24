@@ -25,7 +25,8 @@ test('automatic and manual packaging demos are distinct and mutually discoverabl
 
 test('product classification supports debounced typed search and cancellation', async () => {
   const main = await source('src/main.js');
-  assert.match(main, /setTimeout\(\(\) => void startProductSearch\(productId\), 350\)/);
+  assert.match(main, /state\.productSearches\[productId\]\?\.timer !== timer/);
+  assert.match(main, /delete state\.productSearches\[productId\]; void startProductSearch\(productId\)/);
   assert.match(main, /controller\?\.abort\(\)/);
   assert.match(main, /Type at least 3 characters/);
 });

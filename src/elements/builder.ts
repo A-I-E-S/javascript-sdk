@@ -177,11 +177,13 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
         .item-table { border-collapse:collapse; margin-top:12px; width:100%; }
         .item-table caption { font-weight:750; padding:8px; text-align:left; }
         .item-table th,.item-table td { border-bottom:1px solid var(--africanies-border); padding:10px; text-align:left; }
+        details.card { max-width:100%; overflow-x:auto; }
+        form.shell > .actions { background:var(--africanies-page); isolation:isolate; position:relative; z-index:9; }
         dialog { background:transparent; border:0; inset:0; margin:auto; max-height:92vh; max-width:min(760px,calc(100% - 24px)); overflow:hidden; padding:0; width:100%; }
         dialog > .card { max-height:92vh; overflow:auto; overscroll-behavior:contain; }
         dialog .actions { background:#fff; bottom:0; isolation:isolate; padding-top:10px; position:sticky; z-index:7; }
         dialog::backdrop { background:#17243ab8; }
-        @media(max-width:640px){.summary-pair{grid-template-columns:1fr}.box{overflow-x:auto}.item-table{display:table;min-width:560px}}
+        @media(max-width:640px){.summary-pair{grid-template-columns:1fr}.stack>*{min-width:0}.box{overflow-x:auto}.item-table{display:table;min-width:560px}}
       </style><form class="shell" novalidate>
         <div class="topline"><div><h2>Create shipment</h2><p class="muted">Complete each section, review the shipment, then request rates.</p></div>${testModeMarkup(this.environment)}</div>
         ${this.renderWorkflow()}

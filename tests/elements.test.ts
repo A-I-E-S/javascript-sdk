@@ -119,6 +119,14 @@ describe('AfricanIES custom elements', () => {
       .toEqual(['inches', 'LBS', 'Disabled', 'Enabled']);
   });
 
+  it('contains wide summary tables below the mobile workflow actions', () => {
+    const element = document.createElement('africanies-shipment-builder'); document.body.append(element);
+    const styles = element.shadowRoot!.querySelector('style')!.textContent ?? '';
+    expect(styles).toContain('details.card { max-width:100%; overflow-x:auto; }');
+    expect(styles).toContain('form.shell > .actions');
+    expect(styles).toContain('.stack>*{min-width:0}');
+  });
+
   it('keeps client environment and mode authoritative over host attributes', () => {
     const element = document.createElement('africanies-shipment-builder');
     element.client = fakeClient({ environment: 'live', shipmentMode: 'STN' });

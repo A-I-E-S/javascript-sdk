@@ -82,9 +82,9 @@ test('automatic delivery uses dependent country and state selects', async () => 
   assert.match(main,/shipmentMode:\s*'SFN'.*carriers\.list/s);
 });
 
-test('manual entry explicitly registers SDK browser elements for production bundles', async () => {
-  const manual = await source('src/manual.js');
-  assert.match(manual, /Shipping\.defineAfricaniesElements\(\)/);
+test('every custom-element demo entry explicitly registers elements for production bundles', async () => {
+  const entries = await Promise.all(['src/manual.js','src/showcase.js','src/elements-checkout.js'].map(source));
+  for (const entry of entries) assert.match(entry, /Shipping\.defineAfricaniesElements\(\)/);
 });
 
 test('product classification supports debounced typed search and cancellation', async () => {

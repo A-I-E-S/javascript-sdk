@@ -402,7 +402,8 @@ test('built Pages artifact loads and navigates both demo routes without asset or
   await expect(builtBuilder.getByRole('heading', { name: 'Create shipment' })).toBeVisible(); await expect(builtBuilder.getByRole('button', { name: 'Continue' })).toBeVisible();
   expect(await builtBuilder.evaluate((element) => element.constructor === customElements.get('africanies-shipment-builder') && element.shadowRoot !== null && (element.shadowRoot.adoptedStyleSheets.length>0||Boolean(element.shadowRoot.querySelector('style')?.textContent?.includes('--africanies-accent'))))).toBe(true);
   await page.getByRole('link', { name: 'Automatic', exact: true }).click(); await expect(page.locator('#encoded-key')).toBeVisible();
-  await page.getByRole('link',{name:'Showcase',exact:true}).click();await expect(page).toHaveURL(/showcase\.html$/);await expect(page.locator('#preview-builder').getByRole('heading',{name:'Create shipment'})).toBeVisible();
+  await page.getByRole('link',{name:'Showcase',exact:true}).click();await expect(page).toHaveURL(/showcase\.html$/);const previewBuilder=page.locator('#preview-builder');await expect(previewBuilder.getByRole('heading',{name:'Create shipment',exact:true})).toBeVisible();expect(await previewBuilder.evaluate((element)=>element.constructor===customElements.get('africanies-shipment-builder')&&element.shadowRoot!==null)).toBe(true);
+  await page.reload({waitUntil:'networkidle'});await expect(page.locator('#preview-builder').getByRole('heading',{name:'Create shipment',exact:true})).toBeVisible();
   await page.getByRole('link',{name:'Elements checkout',exact:true}).click();await expect(page).toHaveURL(/elements-checkout\.html$/);await expect(page.locator('#elements-key')).toBeVisible();
   expect(failures).toEqual([]); expect(consoleErrors).toEqual([]);
 });
@@ -414,7 +415,7 @@ test('credential-free showcase renders all three real SDK elements without API t
   await page.goto('http://127.0.0.1:4174/showcase.html',{waitUntil:'networkidle'});
   await expect(page.getByRole('heading',{name:'See the SDK before connecting an API key.'})).toBeVisible();
   await expect(page.locator('#preview-builder').getByRole('heading',{name:'Create shipment'})).toBeVisible();
-  await expect(page.locator('#preview-rates').getByRole('heading',{name:'Shipment carrier'})).toBeVisible();
+  await expect(page.locator('#preview-rates').getByRole('heading',{name:'Shipment carrier',exact:true})).toBeVisible();
   await expect(page.locator('#preview-rates').getByText('Africanies Air Express')).toBeVisible();
   await expect(page.locator('#preview-purchase').getByRole('heading',{name:'Purchase shipment'})).toBeVisible();
   expect(externalRequests).toEqual([]);

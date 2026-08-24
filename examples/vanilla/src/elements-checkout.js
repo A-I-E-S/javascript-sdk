@@ -3,6 +3,8 @@ import './tailwind.css';
 import { minimumAssignedDate } from './demo-state.js';
 import { previewRateRequest } from './showcase-fixtures.js';
 
+Shipping.defineAfricaniesElements();
+
 const $=(selector)=>document.querySelector(selector);let client;let completedRequest;let selectedRate;let purchaseRequest;
 function error(message=''){const node=$('#elements-error');node.textContent=message;node.hidden=!message;if(message)node.focus();}
 function status(message){$('#elements-status').textContent=message;}

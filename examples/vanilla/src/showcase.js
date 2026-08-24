@@ -2,6 +2,8 @@ import * as Shipping from '@africanies/shipping/browser';
 import './tailwind.css';
 import { previewPurchaseRequest,previewPurchaseResult,previewRateRequest,previewRates } from './showcase-fixtures.js';
 
+Shipping.defineAfricaniesElements();
+
 const envelope=(data,message='Local fixture')=>({success:true,status_code:200,message,data});
 const transport={async request(request){if(request.path==='/shipment/rates')return envelope(structuredClone(previewRates));if(request.path==='/shipment/purchase')return envelope(structuredClone(previewPurchaseResult));if(request.path.startsWith('/product/search/'))return envelope([{id:1,name:'Handbags',hs_code:'4202910000',description:'Handbags'}]);throw new Error(`The local preview has no fixture for ${request.path}.`);}};
 const client=Shipping.createAfricaniesClient({environment:'test',shipmentMode:'SFN',transport});

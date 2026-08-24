@@ -135,6 +135,31 @@ describe('AfricanIES custom elements', () => {
     expect(styles).toContain('--color-africanies-accent');
   });
 
+  it('uses one deterministic fallback style in every element', () => {
+    for (const name of ['africanies-shipment-builder','africanies-rate-selection','africanies-purchase-confirmation']) {
+      const element=document.createElement(name);document.body.append(element);
+      expect(element.shadowRoot!.querySelectorAll('style[data-africanies-styles]')).toHaveLength(1);
+    }
+  });
+
+  it('emits no inline style when constructable stylesheets are supported', () => {
+    const replaceDescriptor=Object.getOwnPropertyDescriptor(CSSStyleSheet.prototype,'replaceSync');
+    const adoptedDescriptor=Object.getOwnPropertyDescriptor(ShadowRoot.prototype,'adoptedStyleSheets');
+    const sheets=new WeakMap<ShadowRoot,CSSStyleSheet[]>();
+    Object.defineProperty(CSSStyleSheet.prototype,'replaceSync',{configurable:true,value:vi.fn()});
+    Object.defineProperty(ShadowRoot.prototype,'adoptedStyleSheets',{configurable:true,get(){return sheets.get(this)??[];},set(value){sheets.set(this,value);}});
+    try {
+      for (const name of ['africanies-shipment-builder','africanies-rate-selection','africanies-purchase-confirmation']) {
+        const element=document.createElement(name);document.body.append(element);
+        expect(element.shadowRoot!.adoptedStyleSheets).toHaveLength(1);
+        expect(element.shadowRoot!.querySelector('style')).toBeNull();
+      }
+    } finally {
+      if(replaceDescriptor)Object.defineProperty(CSSStyleSheet.prototype,'replaceSync',replaceDescriptor);else delete (CSSStyleSheet.prototype as {replaceSync?:unknown}).replaceSync;
+      if(adoptedDescriptor)Object.defineProperty(ShadowRoot.prototype,'adoptedStyleSheets',adoptedDescriptor);else delete (ShadowRoot.prototype as {adoptedStyleSheets?:unknown}).adoptedStyleSheets;
+    }
+  });
+
   it('keeps client environment and mode authoritative over host attributes', () => {
     const element = document.createElement('africanies-shipment-builder');
     element.client = fakeClient({ environment: 'live', shipmentMode: 'STN' });

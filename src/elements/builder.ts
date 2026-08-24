@@ -153,7 +153,7 @@ export class AfricaniesShipmentBuilderElement extends AfricaniesElement {
     if (!this.#value) this.#value = defaultValue(this.legacyMode() ?? 'SFN');
     const value = this.#value;
     this.root.innerHTML = `
-      <style>${this.sharedStyleMarkup()}</style><form class="shell" novalidate>
+      ${this.sharedStyleTag()}<form class="shell" novalidate>
         <div class="topline"><div><h2>Create shipment</h2><p class="muted">Complete each section, review the shipment, then request rates.</p></div>${testModeMarkup(this.environment)}</div>
         ${this.renderWorkflow()}
         ${this.#issues.length ? `<div class="alert error" role="alert"><strong>Please review these fields</strong><ul class="issue-list">${this.#issues.slice(0, 8).map((issue) => `<li>${escapeHtml(issue.path)}: ${escapeHtml(issue.message)}</li>`).join('')}</ul></div>` : ''}

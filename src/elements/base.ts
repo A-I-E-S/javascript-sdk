@@ -167,7 +167,7 @@ export abstract class AfricaniesElement extends HTMLElement {
   }
 
   /** Fallback for browsers without constructable stylesheets. */
-  protected sharedStyleMarkup(): string { return this.#usesAdoptedStyles ? '' : sharedStyles; }
+  protected sharedStyleTag(): string { return this.#usesAdoptedStyles ? '' : `<style data-africanies-styles>${sharedStyles}</style>`; }
 
   protected abstract render(): void;
 }

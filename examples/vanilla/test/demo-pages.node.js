@@ -35,8 +35,17 @@ test('credential-free showcase exposes all SDK UI choices and actual elements',a
 });
 
 test('every public demo route has persistent base-relative navigation',async()=>{
-  const pages=await Promise.all(['index.html','manual.html','showcase.html','elements-checkout.html'].map(source));
+  const [pages,verifier]=await Promise.all([Promise.all(['index.html','manual.html','showcase.html','elements-checkout.html'].map(source)),source('../../scripts/verify-pages-artifact.mjs')]);
   for(const page of pages){for(const href of ['./showcase.html','./','./manual.html','./elements-checkout.html'])assert.match(page,new RegExp(`href="${href.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}"`));}
+  assert.match(verifier,/\['index\.html', 'manual\.html', 'showcase\.html', 'elements-checkout\.html'\]/);
+  assert.match(verifier,/navigationTargets/);
+});
+
+test('credential-free browser coverage parses and blocks every non-local URL',async()=>{
+  const browser=await source('../../tests/browser/vanilla.spec.ts');
+  assert.match(browser,/new URL\(route\.request\(\)\.url\(\)\)/);assert.match(browser,/url\.hostname==='127\.0\.0\.1'/);assert.match(browser,/url\.port==='4174'/);
+  assert.match(browser,/externalRequests\.push\(url\.href\)/);assert.match(browser,/route\.abort\('blockedbyclient'\)/);
+  assert.doesNotMatch(browser,/url\(\)\.includes\('api-sandbox\.africaniestest\.com'\)/);
 });
 
 test('automatic and manual checkout use one shared rates and PayDemo renderer', async () => {

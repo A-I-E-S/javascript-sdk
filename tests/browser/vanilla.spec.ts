@@ -409,14 +409,15 @@ test('built Pages artifact loads and navigates both demo routes without asset or
 
 test('credential-free showcase renders all three real SDK elements without API traffic',async({page},testInfo)=>{
   test.skip(testInfo.project.name!=='chromium','One engine proves the shared credential-free showcase; responsive coverage runs separately.');
-  const apiRequests:string[]=[];page.on('request',(request)=>{if(request.url().includes('api-sandbox.africaniestest.com'))apiRequests.push(request.url());});
+  const externalRequests:string[]=[];
+  await page.route('**/*',async(route)=>{const url=new URL(route.request().url());const local=url.protocol==='http:'&&url.hostname==='127.0.0.1'&&url.port==='4174';const embedded=url.protocol==='data:'||url.protocol==='blob:';if(local||embedded){await route.continue();return;}externalRequests.push(url.href);await route.abort('blockedbyclient');});
   await page.goto('http://127.0.0.1:4174/showcase.html',{waitUntil:'networkidle'});
   await expect(page.getByRole('heading',{name:'See the SDK before connecting an API key.'})).toBeVisible();
   await expect(page.locator('#preview-builder').getByRole('heading',{name:'Create shipment'})).toBeVisible();
   await expect(page.locator('#preview-rates').getByRole('heading',{name:'Shipment carrier'})).toBeVisible();
   await expect(page.locator('#preview-rates').getByText('Africanies Air Express')).toBeVisible();
   await expect(page.locator('#preview-purchase').getByRole('heading',{name:'Purchase shipment'})).toBeVisible();
-  expect(apiRequests).toEqual([]);
+  expect(externalRequests).toEqual([]);
 });
 
 test('composed elements checkout gates purchase UI behind explicit PayDemo success',async({page},testInfo)=>{

@@ -1,5 +1,7 @@
 # Getting started
 
+Before installing, you can exercise the browser workflow in the canonical sandbox-only [automatic UAT demo](https://a-i-e-s.github.io/javascript-sdk/). The [manual packaging lab](https://a-i-e-s.github.io/javascript-sdk/manual.html) demonstrates the alternative host-controlled box flow. Supply your own sandbox Base64 credential at runtime; neither page embeds or stores credentials.
+
 ## Create a client
 
 ```ts
@@ -19,7 +21,7 @@ The SDK defaults to `test`. Live traffic requires `environment: 'live'`.
 
 Custom `baseUrl` values must use HTTPS. Plain HTTP is accepted only for local development hosts: `localhost`, `127.0.0.1`, and `[::1]`.
 
-The examples on this page describe the published `@africanies/shipping@0.2.0` contract. Version `0.2.0` is an immutable registry baseline: do not overwrite or republish it. Its exact source commit, npm publisher identity, and publication-approval provenance remain unverified.
+The examples on this page apply to the published `@africanies/shipping@0.4.0` contract. Version `0.2.0` remains an immutable historical registry baseline and must not be overwritten or republished.
 
 | Environment | API origin |
 |---|---|
